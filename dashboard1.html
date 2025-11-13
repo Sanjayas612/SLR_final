@@ -3,805 +3,167 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Student Dashboard - MessMate</title>
+  <title>Producer Dashboard - MessMate</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <style>
     @keyframes slideIn {
       from { opacity: 0; transform: translateY(20px); }
       to { opacity: 1; transform: translateY(0); }
     }
-    .meal-card { 
+    .counter-card { 
       animation: slideIn 0.4s ease-out; 
       transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    .meal-card:hover {
-      transform: translateY(-8px);
+    .counter-card:hover {
+      transform: translateY(-4px);
       box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
     }
-    .rating-update { 
-      animation: pulse 0.6s ease-in-out; 
-    }
-    @keyframes pulse {
-      0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
-      70% { transform: scale(1.02); box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
-      100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
-    }
-    .shimmer {
-      background: linear-gradient(90deg, #1f2937 25%, #374151 50%, #1f2937 75%);
-      background-size: 200% 100%;
-      animation: shimmer 2s infinite;
-    }
-    @keyframes shimmer {
-      0% { background-position: 200% 0; }
-      100% { background-position: -200% 0; }
-    }
-    .image-container {
-      position: relative;
-      overflow: hidden;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    }
-    .meal-image {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    .meal-card:hover .meal-image {
-      transform: scale(1.08);
-    }
+    #reader { width: 100%; max-width: 400px; margin: 0 auto; }
+    #scanner-modal { z-index: 1000; }
+    .scan-result { animation: slideIn 0.5s ease-out; }
     .gradient-text {
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
     }
-    .chart-container {
-      background: linear-gradient(135deg, rgba(31, 41, 55, 0.8) 0%, rgba(55, 65, 81, 0.8) 100%);
-      border-radius: 12px;
-      padding: 20px;
-      border: 1px solid rgba(148, 163, 184, 0.2);
-      backdrop-filter: blur(10px);
-    }
     .modal-overlay {
       backdrop-filter: blur(8px);
     }
   </style>
 </head>
-<body class="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 text-white overflow-x-hidden">
-  <div class="max-w-7xl mx-auto px-4 md:px-8 py-6">
-    <!-- Header -->
-    <div class="flex justify-between items-center mb-12">
+<body class="min-h-screen bg-gradient-to-br from-gray-900 via-slate-900 to-gray-900 text-white p-6 overflow-x-hidden">
+  <div class="max-w-6xl mx-auto px-4 md:px-6">
+    <div class="flex items-center justify-between mb-8">
       <div>
-        <h1 class="text-5xl font-bold gradient-text">MessMate</h1>
-        <p id="welcome" class="text-lg text-indigo-200 mt-2 font-medium"></p>
+        <h1 class="text-4xl font-bold gradient-text">Producer Dashboard</h1>
+        <p id="producer-welcome" class="text-base text-slate-300 mt-2 font-medium"></p>
       </div>
       <div class="flex items-center gap-4">
-        <button id="profileBtn" class="text-2xl p-3 bg-slate-800/50 hover:bg-slate-700/50 rounded-full transition-all duration-300 hover:scale-110" title="Profile">
-          <i class="fas fa-user"></i>
+        <button id="scanBtn" class="text-2xl p-4 bg-slate-800/50 hover:bg-slate-700/50 rounded-full transition-all duration-300 hover:scale-110 shadow-lg" title="Scan QR">
+          <i class="fas fa-qrcode"></i>
         </button>
-        <button id="logout" class="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 px-8 py-3 rounded-xl font-semibold transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl">Logout</button>
+        <button id="logout" class="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 px-6 py-3 rounded-xl font-semibold transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl">Logout</button>
       </div>
     </div>
 
-    <!-- Meals Section -->
-    <section class="mb-16">
-      <h2 class="text-3xl font-bold mb-8 text-indigo-200 flex items-center gap-3">
-        <i class="fas fa-utensils"></i> Available Meals
-      </h2>
-      <div id="meals" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"></div>
-    </section>
-
-    <!-- Orders Section -->
-    <section class="mb-16">
-      <h2 class="text-3xl font-bold mb-8 text-indigo-200 flex items-center gap-3">
-        <i class="fas fa-shopping-bag"></i> Your Orders
-      </h2>
-      <div id="orders" class="bg-slate-800/30 backdrop-blur-sm p-8 rounded-2xl border border-slate-700/30 shadow-2xl"></div>
-
-      <!-- Today's QR Section -->
-      <div id="qrSection" class="mt-8 hidden bg-slate-800/30 backdrop-blur-sm p-8 rounded-2xl border border-slate-700/30 text-center shadow-2xl">
-        <h3 class="text-2xl font-bold mb-6 text-indigo-200 flex items-center justify-center gap-3 mx-auto">
-          <i class="fas fa-qrcode"></i> Today's QR Code
-        </h3>
-        <img id="dashboardQR" class="mx-auto mb-6 border-2 border-indigo-500 rounded-xl shadow-lg" alt="QR Code" style="width: 220px; height: 220px;">
-        <p class="text-lg text-slate-300 mb-4">Scan to confirm today's meals</p>
-        <div id="qrMealsList" class="mt-6 text-left bg-slate-700/40 p-4 rounded-xl border border-slate-600/50 hidden">
-          <h4 class="font-semibold mb-3 text-emerald-300 flex items-center gap-2">
-            <i class="fas fa-check-circle"></i> Contains:
-          </h4>
-          <ul id="qrMealsItems" class="space-y-2 text-sm"></ul>
-        </div>
-        <button id="refreshQR" class="mt-6 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 px-6 py-3 rounded-xl text-white font-semibold transition-all duration-300 hover:scale-105 shadow-lg">
-          <i class="fas fa-sync-alt mr-2"></i> Refresh QR
-        </button>
-      </div>
-    </section>
-  </div>
-
-  <!-- Profile Modal -->
-  <div id="profileModal" class="fixed inset-0 bg-black/60 modal-overlay flex items-center justify-center z-50 hidden">
-    <div class="bg-slate-800/95 backdrop-blur-sm rounded-2xl p-8 max-w-6xl max-h-[95vh] overflow-y-auto border border-slate-700/50 shadow-2xl w-full mx-4 md:mx-0">
-      <div class="flex justify-between items-center mb-8">
-        <h3 class="text-3xl font-bold gradient-text flex items-center gap-3">
-          <i class="fas fa-user-circle"></i> Profile & Order History
-        </h3>
-        <button id="closeProfile" class="text-3xl hover:text-red-400 transition-colors duration-200">×</button>
+    <!-- Stats Section -->
+    <section class="mb-12">
+      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+        <h2 class="text-3xl font-bold text-indigo-200 flex items-center gap-3">
+          <i class="fas fa-chart-pie"></i> Order Statistics
+        </h2>
+        <select id="periodSelect" class="bg-slate-700/80 text-white px-6 py-3 rounded-xl border border-slate-600/50 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/50 transition-all duration-200">
+          <option value="day">Today</option>
+          <option value="week">This Week</option>
+          <option value="month">This Month</option>
+          <option value="year">This Year</option>
+        </select>
       </div>
       
-      <!-- Score Section -->
-      <div id="scoreSection" class="bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-500/30 p-6 rounded-xl mb-8">
-        <p class="text-lg text-yellow-200 flex flex-wrap items-center gap-4">
-          <span><i class="fas fa-exclamation-triangle mr-2"></i> Unpaid Foods Today: <span id="unpaidCount" class="font-bold text-white">0</span></span>
-          <span>|</span>
-          <span><i class="fas fa-star mr-2"></i> Score: <span id="score" class="font-bold">0</span></span>
-        </p>
-      </div>
-
-      <!-- Spending Graph Section -->
-      <div class="mb-12">
-        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-          <h4 class="text-2xl font-bold text-indigo-200 flex items-center gap-3">
-            <i class="fas fa-chart-line"></i> Spending Overview
-          </h4>
-          <select id="periodSelect" class="bg-slate-700/80 text-white px-6 py-3 rounded-xl border border-slate-600/50 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/50 transition-all duration-200">
-            <option value="day">Today</option>
-            <option value="week">This Week</option>
-            <option value="month">This Month</option>
-            <option value="year">This Year</option>
-          </select>
+      <!-- Main Counters -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div class="counter-card bg-gradient-to-br from-blue-500/80 to-blue-600/80 backdrop-blur-sm p-6 rounded-2xl text-center border border-blue-700/50 shadow-xl hover:shadow-2xl transition-all duration-300">
+          <h3 class="text-lg font-semibold text-white/90 mb-2 flex items-center justify-center gap-2">
+            <i class="fas fa-boxes text-blue-200"></i> Total Orders
+          </h3>
+          <p class="text-3xl font-bold text-white" id="totalOrders">0</p>
         </div>
-        <div class="total-spent bg-slate-700/40 p-6 rounded-xl border border-slate-600/50 mb-6 text-center">
-          <p class="text-2xl font-bold text-emerald-400" id="totalSpent">₹0</p>
-          <p class="text-base text-slate-300">Total spent in selected period</p>
+        <div class="counter-card bg-gradient-to-br from-emerald-500/80 to-emerald-600/80 backdrop-blur-sm p-6 rounded-2xl text-center border border-emerald-700/50 shadow-xl hover:shadow-2xl transition-all duration-300">
+          <h3 class="text-lg font-semibold text-white/90 mb-2 flex items-center justify-center gap-2">
+            <i class="fas fa-check-circle text-emerald-200"></i> Paid Orders
+          </h3>
+          <p class="text-3xl font-bold text-white" id="paidOrders">0</p>
         </div>
-        <div class="chart-container">
-          <canvas id="spendingChart" height="250"></canvas>
+        <div class="counter-card bg-gradient-to-br from-red-500/80 to-red-600/80 backdrop-blur-sm p-6 rounded-2xl text-center border border-red-700/50 shadow-xl hover:shadow-2xl transition-all duration-300">
+          <h3 class="text-lg font-semibold text-white/90 mb-2 flex items-center justify-center gap-2">
+            <i class="fas fa-exclamation-triangle text-red-200"></i> Unpaid Orders
+          </h3>
+          <p class="text-3xl font-bold text-white" id="unpaidOrders">0</p>
+        </div>
+        <div class="counter-card bg-gradient-to-br from-purple-500/80 to-purple-600/80 backdrop-blur-sm p-6 rounded-2xl text-center border border-purple-700/50 shadow-xl hover:shadow-2xl transition-all duration-300">
+          <h3 class="text-lg font-semibold text-white/90 mb-2 flex items-center justify-center gap-2" id="scannedLabel">
+            <i class="fas fa-qrcode text-purple-200"></i> Today's Verified
+          </h3>
+          <p class="text-3xl font-bold text-white" id="scannedOrders">0</p>
         </div>
       </div>
 
-      <!-- Food Items Graph Section -->
-      <div class="mb-12">
-        <h4 class="text-2xl font-bold text-indigo-200 mb-6 flex items-center gap-3">
-          <i class="fas fa-chart-bar"></i> Food Items Ordered
-        </h4>
-        <div class="chart-container">
-          <canvas id="foodChart" height="250"></canvas>
+      <!-- Food Types Counters -->
+      <div class="bg-slate-800/40 backdrop-blur-sm p-8 rounded-2xl border border-slate-700/50 shadow-xl">
+        <h3 class="text-2xl font-bold mb-6 text-indigo-200 flex items-center gap-3">
+          <i class="fas fa-utensils"></i> Food Types Ordered
+        </h3>
+        <div id="mealTypes" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+      </div>
+    </section>
+
+    <!-- Scanned Orders Verification Section -->
+    <section class="mb-12">
+      <h2 class="text-3xl font-bold mb-6 text-indigo-200 flex items-center gap-3">
+        <i class="fas fa-clipboard-list"></i> Pending Verifications
+      </h2>
+      <div id="pendingVerifications" class="bg-slate-800/40 backdrop-blur-sm p-8 rounded-2xl border border-slate-700/50 space-y-6 min-h-[200px] shadow-xl">
+        <div class="text-slate-400 text-center py-12 flex items-center justify-center gap-3">
+          <i class="fas fa-qrcode text-3xl opacity-50"></i>
+          <div>
+            <p class="text-lg">Scan a QR to start verification.</p>
+            <p class="text-sm mt-1">Ready to process student orders</p>
+          </div>
         </div>
       </div>
+    </section>
 
-      <!-- Order History -->
-      <h4 class="text-2xl font-bold text-indigo-200 mb-6 flex items-center gap-3">
-        <i class="fas fa-history"></i> Previous Orders
-      </h4>
-      <div id="profileOrders" class="space-y-4 max-h-96 overflow-y-auto"></div>
+    <!-- Live Updates Section -->
+    <section class="mb-12">
+      <h2 class="text-3xl font-bold mb-6 text-indigo-200 flex items-center gap-3">
+        <i class="fas fa-star"></i> Live Rating Updates
+      </h2>
+      <div id="live" class="bg-slate-800/40 backdrop-blur-sm p-8 rounded-2xl border border-slate-700/50 min-h-[150px] shadow-xl overflow-y-auto max-h-96"></div>
+    </section>
+  </div>
+
+  <!-- Scanner Modal -->
+  <div id="scannerModal" class="fixed inset-0 bg-black/80 modal-overlay flex items-center justify-center z-50 hidden">
+    <div class="bg-slate-800/95 backdrop-blur-sm rounded-2xl p-8 max-w-lg w-full mx-4 border border-slate-700/50 shadow-2xl">
+      <div class="flex justify-between items-center mb-6">
+        <h3 class="text-2xl font-bold gradient-text flex items-center gap-3">
+          <i class="fas fa-qrcode"></i> QR Scanner
+        </h3>
+        <button id="closeScanner" class="text-3xl hover:text-red-400 transition-colors duration-200">×</button>
+      </div>
+      <div id="reader" class="mb-4"></div>
+      <p class="text-base text-slate-300 text-center flex items-center justify-center gap-2">
+        <i class="fas fa-mobile-alt mr-2"></i> Scan student's QR code
+      </p>
     </div>
   </div>
 
-  <!-- QR Modal -->
-  <div id="qrModal" class="fixed inset-0 bg-black/60 modal-overlay flex items-center justify-center z-50 hidden">
-    <div class="bg-slate-800/95 backdrop-blur-sm rounded-2xl p-8 max-w-lg w-full mx-4 border border-slate-700/50 shadow-2xl text-center">
-      <h3 class="text-3xl font-bold gradient-text mb-8 flex items-center justify-center gap-3 mx-auto">
-        <i class="fas fa-check-circle text-emerald-400"></i> Payment Successful!
-      </h3>
-      <p class="text-lg text-slate-300 mb-6">Scan QR for Today's Meals</p>
-      <img id="qrCanvas" class="mx-auto mb-6 border-2 border-emerald-500 rounded-xl shadow-lg" alt="QR Code" style="width: 220px; height: 220px;">
-      <div id="modalMealsList" class="mt-6 text-left bg-slate-700/40 p-4 rounded-xl border border-slate-600/50 hidden">
-        <h4 class="font-semibold mb-3 text-emerald-300 flex items-center gap-2">
-          <i class="fas fa-check-circle"></i> Contains:
-        </h4>
-        <ul id="modalMealsItems" class="space-y-2 text-sm"></ul>
+  <!-- Verification Modal -->
+  <div id="verifyModal" class="fixed inset-0 bg-black/60 modal-overlay flex items-center justify-center z-50 hidden">
+    <div class="bg-slate-800/95 backdrop-blur-sm rounded-2xl p-8 max-w-2xl w-full mx-4 border border-slate-700/50 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center mb-6">
+        <h3 class="text-2xl font-bold gradient-text flex items-center gap-3">
+          <i class="fas fa-clipboard-check"></i> Verify Order
+        </h3>
+        <button id="closeVerify" class="text-3xl hover:text-red-400 transition-colors duration-200">×</button>
       </div>
-      <button id="closeQR" class="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 px-8 py-3 rounded-xl font-semibold transition-all duration-300 hover:scale-105 shadow-lg">
-        <i class="fas fa-times mr-2"></i> Close
-      </button>
+      <div id="verifyContent" class="space-y-6">
+        <!-- Dynamic content here -->
+      </div>
+      <div class="flex justify-end gap-4 mt-8 pt-6 border-t border-slate-700/50">
+        <button id="cancelVerify" class="px-6 py-3 bg-gray-600/80 hover:bg-gray-700/80 rounded-xl transition-all duration-300 hover:scale-105 shadow-lg"> 
+          <i class="fas fa-times mr-2"></i> Cancel
+        </button>
+        <button id="doneVerify" class="px-6 py-3 bg-emerald-600/80 hover:bg-emerald-700/80 rounded-xl transition-all duration-300 hover:scale-105 shadow-lg">
+          <i class="fas fa-check mr-2"></i> Done & Verify
+        </button>
+      </div>
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<<<<<<< HEAD
   <script src="script1.js"></script>
-=======
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-  // Ensure user is logged in (localStorage)
-  const userEmail = localStorage.getItem('messmate_user_email');
-  const userRole = localStorage.getItem('messmate_user_role') || 'student';
-  const userName = localStorage.getItem('messmate_user_name') || '';
-
-  if (!userEmail) {
-    window.location.href = '/';
-  }
-
-  document.getElementById('welcome').textContent = `Welcome, ${userName || userEmail} • ${userRole}`;
-
-  document.getElementById('logout').addEventListener('click', () => {
-    localStorage.removeItem('messmate_user_email');
-    localStorage.removeItem('messmate_user_role');
-    localStorage.removeItem('messmate_user_name');
-    window.location.href = '/';
-  });
-
-  // Global orders data for profile
-  let userOrders = [];
-
-  // SSE connection for real-time rating updates
-  let eventSource = null;
-
-  function connectSSE() {
-    if (eventSource) eventSource.close();
-    
-    eventSource = new EventSource('/sse-ratings');
-    
-    eventSource.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      const ratingContainer = document.querySelector(`[data-rating="${data.mealName}"]`);
-      if (ratingContainer) {
-        ratingContainer.classList.add('rating-update');
-        const stars = ratingContainer.querySelectorAll('span');
-        stars.forEach((star, i) => {
-          if (i + 1 <= Math.round(data.avgRating)) {
-            star.textContent = '★';
-            star.className = 'text-xl text-yellow-400';
-          } else {
-            star.textContent = '★';
-            star.className = 'text-xl text-gray-600';
-          }
-        });
-        // Update total ratings count
-        const mealCard = ratingContainer.closest('.meal-card');
-        if (mealCard) {
-          const ratingText = mealCard.querySelector('.text-xs.text-slate-400');
-          if (ratingText) {
-            ratingText.textContent = `${data.totalRatings} rating${data.totalRatings !== 1 ? 's' : ''}`;
-          }
-        }
-        setTimeout(() => ratingContainer.classList.remove('rating-update'), 500);
-      }
-    };
-
-    eventSource.onerror = () => {
-      eventSource.close();
-      setTimeout(connectSSE, 3000);
-    };
-  }
-
-  async function loadMeals() {
-    try {
-      const res = await fetch('/meals');
-      const meals = await res.json();
-      const container = document.getElementById('meals');
-      container.innerHTML = '';
-
-      meals.forEach(m => {
-        const card = document.createElement('div');
-        card.className = "meal-card bg-slate-800/50 backdrop-blur-sm rounded-xl overflow-hidden border border-slate-700/50 hover:border-blue-500/50 transition duration-300 shadow-lg hover:shadow-2xl hover:shadow-blue-500/20 flex flex-col";
-        card.setAttribute('data-meal', m.name);
-
-        const imageUrl = m.image && m.image !== 'Meal1.jpg' ? m.image : `${m.name.replace(/\s+/g, '')}.jpg`;
-
-        card.innerHTML = `
-          <div class="image-container h-48 relative">
-            <img src="${imageUrl}" alt="${m.name}" class="meal-image" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22200%22%3E%3Crect fill=%22%23667eea%22 width=%22400%22 height=%22200%22/%3E%3Ctext x=%2250%25%22 y=%2250%22 font-size=%2224%22 fill=%22white%22 text-anchor=%22middle%22 dominant-baseline=%22middle%22%3EMeal Image%3C/text%3E%3C/svg%3E'"/>
-            <div class="absolute top-3 right-3 bg-gradient-to-r from-blue-500 to-purple-500 px-3 py-1 rounded-full text-xs font-bold">₹${m.price}</div>
-          </div>
-
-          <div class="flex-1 p-5 flex flex-col">
-            <h3 class="text-xl font-bold mb-2 text-white">${m.name}</h3>
-            <p class="text-sm text-slate-300 mb-4 flex-1">${m.description || 'Delicious meal prepared fresh daily'}</p>
-            
-            <div class="mb-4 flex items-center justify-between">
-              <div class="flex items-center gap-3">
-                <div class="flex gap-1" data-rating="${m.name}">
-                  ${[1,2,3,4,5].map(i => `<span class="text-xl ${i <= Math.round(m.avgRating) ? 'text-yellow-400' : 'text-gray-600'}">★</span>`).join('')}
-                </div>
-                <span class="text-xs text-slate-400">${m.totalRatings} rating${m.totalRatings !== 1 ? 's' : ''}</span>
-              </div>
-              <button onclick="bookMeal('${m.name}', ${m.price})" class="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 px-4 py-2 rounded-lg font-semibold transition transform hover:scale-105">Order Now</button>
-            </div>
-          </div>
-        `;
-        container.appendChild(card);
-      });
-    } catch (err) {
-      console.error('Error loading meals:', err);
-    }
-  }
-
-  async function bookMeal(mealName, price) {
-    try {
-      const res = await fetch('/book', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mealName, email: userEmail, price })
-      });
-      const data = await res.json();
-      if (data.success) {
-        alert(`✅ ${mealName} booked successfully!`);
-        loadOrders();
-      } else {
-        alert(`❌ ${data.error || 'Booking failed'}`);
-      }
-    } catch (e) {
-      alert('❌ Booking failed. Please try again.');
-      console.error('Booking error:', e);
-    }
-  }
-
-  // FIXED: displayQRMeals - Correct parsing, grouping for quantity, full datetime
-  function displayQRMeals(qrData, containerId, itemsId) {
-    try {
-      const parsed = JSON.parse(qrData);  // Full object: {userEmail, date, meals: [...]}
-      let meals = parsed.meals || [];  // Extract the array
-
-      if (meals.length === 0) {
-        document.getElementById(containerId).classList.add('hidden');
-        return;
-      }
-
-      // Group by name for quantity
-      const grouped = meals.reduce((acc, m) => {
-        if (!acc[m.name]) {
-          acc[m.name] = { quantity: 0, totalPrice: 0, times: [] };
-        }
-        acc[m.name].quantity++;
-        acc[m.name].totalPrice += m.price;
-        acc[m.name].times.push(new Date(m.date).toLocaleString());  // Full time
-        return acc;
-      }, {});
-
-      const itemsList = document.getElementById(itemsId);
-      itemsList.innerHTML = Object.entries(grouped).map(([name, info]) => 
-        `<li>• ${name} (Qty: ${info.quantity}) - ₹${info.totalPrice} <br><small class="text-slate-400">Times: ${info.times.join(', ')}</small></li>`
-      ).join('');
-
-      const container = document.getElementById(containerId);
-      container.classList.remove('hidden');
-    } catch (e) {
-      console.error('Error parsing QR data:', e);
-      document.getElementById(containerId).classList.add('hidden');
-    }
-  }
-
-  async function loadOrders() {
-    try {
-      const res = await fetch(`/user/${userEmail}`);
-      const data = await res.json();
-      if (data.success) {
-        userOrders = data.orders || [];
-        const container = document.getElementById('orders');
-        const now = new Date();
-        const todayStr = now.toDateString();
-        const todayUnpaid = userOrders.filter(o => new Date(o.date).toDateString() === todayStr && !o.paid);
-
-        let html = '';
-        if (todayUnpaid.length > 0) {
-          const totalAmount = todayUnpaid.reduce((sum, o) => sum + o.price, 0);
-          html += `
-            <div class="mb-6 p-4 bg-blue-900/50 rounded-lg border border-blue-700/50">
-              <h4 class="text-lg font-bold mb-2">Pay for Today's Orders</h4>
-              <p class="text-sm text-blue-200 mb-4">You have ${todayUnpaid.length} unpaid order${todayUnpaid.length !== 1 ? 's' : ''} today.</p>
-              <button id="payAllBtn" class="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 px-6 py-2 rounded-lg font-semibold transition transform hover:scale-105">Pay ₹${totalAmount} Now</button>
-            </div>
-          `;
-        }
-
-        if (userOrders.length > 0) {
-          html += userOrders.map(o => {
-            const paidStatus = o.paid ? 'Paid ✓' : 'Unpaid';
-            const statusClass = o.paid ? 'text-green-400' : 'text-red-400';
-            let cancelBtn = '';
-            if (!o.paid) {
-              const orderDateStr = new Date(o.date).toDateString();
-              if (orderDateStr === todayStr) {
-                cancelBtn = `<button class="ml-2 bg-red-500 hover:bg-red-600 px-3 py-1 rounded text-sm font-semibold transition" onclick="cancelOrder('${o._id}')">Cancel</button>`;
-              }
-            }
-            return `
-              <div class="bg-slate-700/30 border border-slate-600/50 rounded-lg p-4 mb-3 hover:border-blue-500/50 transition">
-                <div class="flex justify-between items-start">
-                  <div>
-                    <p class="font-semibold text-white text-lg">${o.mealName}</p>
-                    <p class="text-sm text-slate-400 mt-1">${new Date(o.date).toLocaleString()} <span class="${statusClass}">${paidStatus}</span></p>
-                  </div>
-                  <div class="text-right">
-                    <p class="text-lg font-bold text-green-400">₹${o.price}</p>
-                    ${cancelBtn}
-                  </div>
-                </div>
-              </div>
-            `;
-          }).join('');
-        } else {
-          html += '<div class="text-slate-400 text-center py-8">No orders found.</div>';
-        }
-
-        container.innerHTML = html;
-
-        // Add pay button listener if exists
-        const payBtn = document.getElementById('payAllBtn');
-        if (payBtn) {
-          payBtn.addEventListener('click', () => handlePay(userEmail));
-        }
-
-        // Handle QR display
-        const savedQR = localStorage.getItem(`qr_${todayStr}_${userEmail}`);
-        const savedQRData = localStorage.getItem(`qrData_${todayStr}_${userEmail}`);
-        const qrSection = document.getElementById('qrSection');
-        if (savedQR && savedQRData && todayUnpaid.length === 0) {
-          qrSection.classList.remove('hidden');
-          document.getElementById('dashboardQR').src = savedQR;
-          displayQRMeals(savedQRData, 'qrMealsList', 'qrMealsItems');
-          // Refresh button
-          document.getElementById('refreshQR').addEventListener('click', () => {
-            document.getElementById('dashboardQR').src = savedQR;
-          });
-        } else {
-          qrSection.classList.add('hidden');
-        }
-
-        // Update profile modal if it's open
-        if (!profileModal.classList.contains('hidden')) {
-          updateProfileModal();
-        }
-      }
-    } catch (err) {
-      console.error('Error loading orders:', err);
-      document.getElementById('orders').innerHTML = '<div class="text-red-400 text-center py-8">Failed to load orders</div>';
-    }
-  }
-
-  async function handlePay(email) {
-    const btn = document.getElementById('payAllBtn');
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = 'Processing...';
-    }
-
-    try {
-      const res = await fetch('/pay', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
-      });
-      const data = await res.json();
-
-      if (data.success) {
-        // Set QR image src and display meals in modal
-        document.getElementById('qrCanvas').src = data.qrBase64;
-        displayQRMeals(data.qrData, 'modalMealsList', 'modalMealsItems');
-
-        // Save to localStorage for today
-        const today = new Date().toDateString();
-        localStorage.setItem(`qr_${today}_${email}`, data.qrBase64);
-        localStorage.setItem(`qrData_${today}_${email}`, data.qrData);
-
-        // Show modal
-        document.getElementById('qrModal').classList.remove('hidden');
-
-        // Reload orders to update UI and show QR section
-        loadOrders();
-      } else {
-        alert(`❌ ${data.error || 'Payment failed'}`);
-      }
-    } catch (e) {
-      alert('❌ Payment failed. Please try again.');
-      console.error('Payment error:', e);
-    } finally {
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = 'Pay Now';
-      }
-    }
-  }
-
-  async function cancelOrder(orderId) {
-    if (!confirm('Are you sure you want to cancel this order?')) return;
-
-    const btn = event.target;
-    btn.disabled = true;
-    btn.textContent = 'Cancelling...';
-
-    try {
-      const res = await fetch('/cancel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId, email: userEmail })
-      });
-      const data = await res.json();
-
-      if (data.success) {
-        alert('❌ Order cancelled successfully!');
-        loadOrders(); // Reload to update UI and profile
-      } else {
-        alert(`❌ ${data.error || 'Cancel failed'}`);
-      }
-    } catch (e) {
-      alert('❌ Cancel failed. Please try again.');
-      console.error('Cancel error:', e);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = 'Cancel';
-    }
-  }
-
-  // Profile Modal Functionality (unchanged for brevity - include full from original)
-  const profileModal = document.getElementById('profileModal');
-  const profileBtn = document.getElementById('profileBtn');
-  const closeProfile = document.getElementById('closeProfile');
-  const periodSelect = document.getElementById('periodSelect');
-  const totalSpentEl = document.getElementById('totalSpent');
-  const profileOrdersEl = document.getElementById('profileOrders');
-  const scoreSection = document.getElementById('scoreSection');
-  const unpaidCountEl = document.getElementById('unpaidCount');
-  const scoreEl = document.getElementById('score');
-  let spendingChart = null;
-  let foodChart = null;
-
-  profileBtn.addEventListener('click', () => {
-    updateProfileModal();
-    profileModal.classList.remove('hidden');
-  });
-
-  closeProfile.addEventListener('click', () => {
-    profileModal.classList.add('hidden');
-    if (spendingChart) {
-      spendingChart.destroy();
-      spendingChart = null;
-    }
-    if (foodChart) {
-      foodChart.destroy();
-      foodChart = null;
-    }
-  });
-
-  profileModal.addEventListener('click', (e) => {
-    if (e.target === profileModal) {
-      profileModal.classList.add('hidden');
-      if (spendingChart) {
-        spendingChart.destroy();
-        spendingChart = null;
-      }
-      if (foodChart) {
-        foodChart.destroy();
-        foodChart = null;
-      }
-    }
-  });
-
-  periodSelect.addEventListener('change', () => {
-    updateSpendingChart();
-    updateFoodChart();
-  });
-
-  function updateProfileModal() {
-    // Update score section - always visible, score can be 0
-    const now = new Date();
-    const todayStr = now.toDateString();
-    const todayUnpaid = userOrders.filter(o => new Date(o.date).toDateString() === todayStr && !o.paid);
-    const unpaidCount = todayUnpaid.length;
-    const score = -unpaidCount;
-    scoreSection.classList.remove('hidden'); // Always show
-    unpaidCountEl.textContent = unpaidCount;
-    scoreEl.textContent = score;
-    scoreEl.className = `font-bold ${score < 0 ? 'text-red-400' : 'text-green-400'}`;
-
-    // Update order history in modal (full list, no cancel buttons in modal for simplicity)
-    if (userOrders.length > 0) {
-      const rows = userOrders.map(o => {
-        const paidStatus = o.paid ? 'Paid ✓' : 'Unpaid';
-        return `
-          <div class="bg-slate-700/30 border border-slate-600/50 rounded-lg p-4 hover:border-blue-500/50 transition">
-            <div class="flex justify-between items-start">
-              <div>
-                <p class="font-semibold text-white text-lg">${o.mealName}</p>
-                <p class="text-sm text-slate-400 mt-1">${new Date(o.date).toLocaleString()} <span class="text-${o.paid ? 'green' : 'red'}-400">${paidStatus}</span></p>
-              </div>
-              <p class="text-lg font-bold text-green-400">₹${o.price}</p>
-            </div>
-          </div>
-        `;
-      }).join('');
-      profileOrdersEl.innerHTML = rows;
-    } else {
-      profileOrdersEl.innerHTML = '<div class="text-slate-400 text-center py-8">No previous orders found.</div>';
-    }
-
-    // Initialize charts for default period
-    updateSpendingChart();
-    updateFoodChart();
-  }
-
-  function updateSpendingChart() {
-    const period = periodSelect.value;
-    const now = new Date();
-    let startDate;
-
-    switch (period) {
-      case 'day':
-        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        break;
-      case 'week':
-        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
-        break;
-      case 'month':
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        break;
-      case 'year':
-        startDate = new Date(now.getFullYear(), 0, 1);
-        break;
-    }
-
-    const filteredOrders = userOrders.filter(o => new Date(o.date) >= startDate);
-    const totalSpent = filteredOrders.reduce((sum, o) => sum + o.price, 0);
-    totalSpentEl.textContent = `₹${totalSpent}`;
-
-    // Group orders by appropriate interval for chart
-    const groupedData = {};
-    filteredOrders.forEach(o => {
-      const date = new Date(o.date);
-      let key;
-      switch (period) {
-        case 'day':
-          key = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          break;
-        case 'week':
-          key = `Day ${date.getDay() + 1}`;
-          break;
-        case 'month':
-          key = date.getDate();
-          break;
-        case 'year':
-          key = date.toLocaleString('default', { month: 'short' });
-          break;
-      }
-      if (!groupedData[key]) groupedData[key] = 0;
-      groupedData[key] += o.price;
-    });
-
-    let labels = Object.keys(groupedData);
-    // Sort labels chronologically
-    let sortedLabels = [...labels];
-    switch (period) {
-      case 'day':
-        sortedLabels.sort((a, b) => new Date(`1970/01/01 ${a}`) - new Date(`1970/01/01 ${b}`));
-        break;
-      case 'month':
-        sortedLabels.sort((a, b) => Number(a) - Number(b));
-        break;
-      case 'year':
-        const monthOrder = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 };
-        sortedLabels.sort((a, b) => monthOrder[a] - monthOrder[b]);
-        break;
-      // week already sorted by day number
-      default:
-        sortedLabels.sort();
-    }
-    const data = sortedLabels.map(l => groupedData[l]);
-
-    const ctx = document.getElementById('spendingChart').getContext('2d');
-    if (spendingChart) spendingChart.destroy();
-    spendingChart = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: sortedLabels,
-        datasets: [{
-          label: 'Amount Spent (₹)',
-          data: data,
-          borderColor: 'rgba(59, 130, 246, 1)',
-          backgroundColor: 'rgba(59, 130, 246, 0.2)',
-          tension: 0.1,
-          fill: true
-        }]
-      },
-      options: {
-        responsive: true,
-        scales: {
-          y: {
-            beginAtZero: true,
-            ticks: { color: 'white' },
-            grid: { color: 'rgba(255,255,255,0.1)' }
-          },
-          x: {
-            ticks: { color: 'white' },
-            grid: { color: 'rgba(255,255,255,0.1)' }
-          }
-        },
-        plugins: {
-          legend: { labels: { color: 'white' } }
-        }
-      }
-    });
-  }
-
-  function updateFoodChart() {
-    const period = periodSelect.value;
-    const now = new Date();
-    let startDate;
-
-    switch (period) {
-      case 'day':
-        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        break;
-      case 'week':
-        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
-        break;
-      case 'month':
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        break;
-      case 'year':
-        startDate = new Date(now.getFullYear(), 0, 1);
-        break;
-    }
-
-    const filteredOrders = userOrders.filter(o => new Date(o.date) >= startDate);
-    const foodCounts = {};
-    filteredOrders.forEach(o => {
-      if (!foodCounts[o.mealName]) foodCounts[o.mealName] = 0;
-      foodCounts[o.mealName]++;
-    });
-
-    const labels = Object.keys(foodCounts).sort();
-    const data = labels.map(label => foodCounts[label]);
-
-    const ctx = document.getElementById('foodChart').getContext('2d');
-    if (foodChart) foodChart.destroy();
-    foodChart = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: labels,
-        datasets: [{
-          label: 'Number of Orders',
-          data: data,
-          borderColor: 'rgba(34, 197, 94, 1)',
-          backgroundColor: 'rgba(34, 197, 94, 0.2)',
-          tension: 0.1,
-          fill: true
-        }]
-      },
-      options: {
-        responsive: true,
-        scales: {
-          y: {
-            beginAtZero: true,
-            ticks: { color: 'white' },
-            grid: { color: 'rgba(255,255,255,0.1)' }
-          },
-          x: {
-            ticks: { color: 'white' },
-            grid: { color: 'rgba(255,255,255,0.1)' }
-          }
-        },
-        plugins: {
-          legend: { labels: { color: 'white' } }
-        }
-      }
-    });
-  }
-
-  // QR Modal Functionality
-  document.getElementById('closeQR').addEventListener('click', () => {
-    document.getElementById('qrModal').classList.add('hidden');
-  });
-
-  document.getElementById('qrModal').addEventListener('click', (e) => {
-    if (e.target.id === 'qrModal') {
-      document.getElementById('qrModal').classList.add('hidden');
-    }
-  });
-
-  // Initialize
-  loadMeals();
-  loadOrders();
-  connectSSE();
-
-  // Cleanup on page unload
-  window.addEventListener('beforeunload', () => {
-    if (eventSource) eventSource.close();
-  });
-</script>
->>>>>>> 139c994e348a54195d78466ac0eed0edf7617877
 </body>
 </html>
-
