@@ -17,6 +17,13 @@
       -webkit-text-fill-color: transparent;
       background-clip: text;
     }
+    .pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+    @keyframes slide-in {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    .animate-slide-in { animation: slide-in 0.3s ease-out; }
   </style>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 text-white">
@@ -92,177 +99,83 @@
         </div>
       </div>
 
-      <!-- Status Section -->
+      <!-- Payment & Status Section -->
       <div class="glass-effect rounded-2xl p-8">
         <div class="flex items-center justify-between mb-6">
           <h2 class="text-2xl font-bold text-indigo-200 flex items-center gap-3">
-            <i class="fas fa-check-circle"></i> Verification Status
+            <i class="fas fa-check-circle"></i> Payment Status
           </h2>
           <div id="statusBadge" class="px-6 py-3 rounded-full font-semibold text-lg"></div>
         </div>
-        <div id="verifiedInfo" class="hidden bg-emerald-900/30 border border-emerald-500/50 rounded-xl p-6">
-          <p class="text-emerald-300 flex items-center gap-2">
-            <i class="fas fa-info-circle"></i>
-            <span>Verified at: <span id="verifiedAt" class="font-semibold">-</span></span>
-          </p>
+
+        <!-- Payment Section (shown when not verified) -->
+        <div id="paymentSection" class="hidden">
+          <div class="bg-gradient-to-r from-purple-900/30 to-indigo-900/30 border border-purple-500/50 rounded-xl p-6 mb-6">
+            <h3 class="text-xl font-bold text-purple-200 mb-4 flex items-center gap-2">
+              <i class="fas fa-qrcode"></i> UPI Payment
+            </h3>
+            <p class="text-slate-300 mb-4">Scan the QR code below with any UPI app to complete payment</p>
+            
+            <!-- QR Code Display -->
+            <div class="bg-white p-4 rounded-xl inline-block mb-4 w-full flex justify-center">
+              <div id="qrCanvas"></div>
+            </div>
+
+            <div class="bg-slate-700/50 p-4 rounded-xl mb-4">
+              <p class="text-sm text-slate-300 mb-2">Or manually enter UPI ID:</p>
+              <div class="flex items-center gap-2">
+                <code id="upiId" class="flex-1 bg-slate-800/50 px-4 py-2 rounded text-emerald-400 font-mono text-lg">-</code>
+                <button onclick="copyUPI()" class="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded transition">
+                  <i class="fas fa-copy"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Auto-detection info -->
+            <div class="bg-blue-900/30 border border-blue-500/50 rounded-xl p-4 mb-4">
+              <p class="text-blue-200 text-sm flex items-start gap-2">
+                <i class="fas fa-info-circle mt-1"></i>
+                <span><strong>Auto-Detection Active:</strong> After you complete the payment, the system will automatically detect it within a few seconds. You don't need to click anything!</span>
+              </p>
+            </div>
+
+            <div class="bg-yellow-900/30 border border-yellow-500/50 rounded-xl p-4 mb-6">
+              <p class="text-yellow-200 text-sm flex items-start gap-2">
+                <i class="fas fa-stopwatch mt-1"></i>
+                <span>Payment detection may take 5-10 seconds. Please wait after completing payment. If auto-detection fails, use the manual verify button below.</span>
+              </p>
+            </div>
+
+            <!-- Manual verify button as backup -->
+            <button 
+              id="confirmPaymentBtn" 
+              class="w-full bg-gradient-to-r from-slate-600 to-slate-700 hover:from-slate-700 hover:to-slate-800 px-8 py-4 rounded-xl font-semibold transition-all duration-300 hover:scale-105 shadow-lg text-lg"
+            >
+              <i class="fas fa-hand-pointer mr-2"></i> Manual Verify (if auto-detect fails)
+            </button>
+          </div>
         </div>
-        <button 
-          id="verifyOrderBtn" 
-          class="hidden w-full mt-6 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 px-8 py-4 rounded-xl font-semibold transition-all duration-300 hover:scale-105 shadow-lg text-lg"
-        >
-          <i class="fas fa-check-double mr-2"></i> Verify This Order
-        </button>
+
+        <!-- Verified Info -->
+        <div id="verifiedInfo" class="hidden bg-emerald-900/30 border border-emerald-500/50 rounded-xl p-6">
+          <div class="flex items-center gap-3 mb-4">
+            <i class="fas fa-check-circle text-emerald-400 text-3xl"></i>
+            <div>
+              <p class="text-emerald-300 text-lg font-bold">Payment Received & Token Verified!</p>
+              <p class="text-emerald-200 text-sm">Verified at: <span id="verifiedAt" class="font-semibold">-</span></p>
+            </div>
+          </div>
+          <div class="bg-emerald-800/30 rounded-lg p-4">
+            <p class="text-emerald-100 text-sm">
+              <i class="fas fa-utensils mr-2"></i>
+              This token has been successfully verified. The customer can now collect their order.
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 
-  <script>
-    const tokenInput = document.getElementById('tokenInput');
-    const verifyBtn = document.getElementById('verifyBtn');
-    const errorMsg = document.getElementById('errorMsg');
-    const tokenDetails = document.getElementById('tokenDetails');
-    const verifyOrderBtn = document.getElementById('verifyOrderBtn');
-
-    let currentToken = null;
-
-    // Verify token on button click
-    verifyBtn.addEventListener('click', async () => {
-      const token = tokenInput.value.trim();
-      if (!token) {
-        showError('Please enter a token number');
-        return;
-      }
-      await fetchTokenDetails(token);
-    });
-
-    // Also verify on Enter key
-    tokenInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') verifyBtn.click();
-    });
-
-    async function fetchTokenDetails(token) {
-      try {
-        verifyBtn.disabled = true;
-        verifyBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Verifying...';
-        errorMsg.classList.add('hidden');
-
-        const res = await fetch(`/token/${token}`);
-        const data = await res.json();
-
-        if (data.success) {
-          currentToken = data;
-          displayTokenDetails(data);
-          tokenDetails.classList.remove('hidden');
-        } else {
-          showError(data.error || 'Token not found');
-          tokenDetails.classList.add('hidden');
-        }
-      } catch (err) {
-        showError('Error fetching token details. Please try again.');
-        console.error(err);
-      } finally {
-        verifyBtn.disabled = false;
-        verifyBtn.innerHTML = '<i class="fas fa-search mr-2"></i> Verify Token';
-      }
-    }
-
-    function displayTokenDetails(data) {
-      // User details
-      document.getElementById('userName').textContent = data.userName;
-      document.getElementById('userEmail').textContent = data.userEmail;
-      document.getElementById('tokenNumber').textContent = `#${data.token}`;
-      document.getElementById('tokenDate').textContent = new Date(data.date).toLocaleDateString('en-IN', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      });
-
-      // Meals list
-      const mealsList = document.getElementById('mealsList');
-      mealsList.innerHTML = data.meals.map(meal => `
-        <div class="bg-slate-700/40 p-6 rounded-xl border border-slate-600/50 hover:border-indigo-500/50 transition-all duration-300">
-          <div class="flex justify-between items-center">
-            <div class="flex-1">
-              <p class="text-white text-xl font-semibold mb-2">${meal.name}</p>
-              <p class="text-slate-400 text-sm">Price per item: ₹${meal.price}</p>
-            </div>
-            <div class="text-right">
-              <p class="text-indigo-400 text-lg font-bold mb-1">Qty: ${meal.quantity}</p>
-              <p class="text-emerald-400 text-xl font-bold">₹${meal.price * meal.quantity}</p>
-            </div>
-          </div>
-        </div>
-      `).join('');
-
-      // Total amount
-      document.getElementById('totalAmount').textContent = `₹${data.totalAmount}`;
-
-      // Status
-      const statusBadge = document.getElementById('statusBadge');
-      const verifiedInfo = document.getElementById('verifiedInfo');
-      
-      if (data.verified) {
-        statusBadge.className = 'px-6 py-3 rounded-full font-semibold text-lg bg-emerald-900/30 text-emerald-400 border border-emerald-500/50';
-        statusBadge.innerHTML = '<i class="fas fa-check-circle mr-2"></i> Verified';
-        verifiedInfo.classList.remove('hidden');
-        document.getElementById('verifiedAt').textContent = new Date(data.verifiedAt).toLocaleString('en-IN');
-        verifyOrderBtn.classList.add('hidden');
-      } else {
-        statusBadge.className = 'px-6 py-3 rounded-full font-semibold text-lg bg-yellow-900/30 text-yellow-400 border border-yellow-500/50';
-        statusBadge.innerHTML = '<i class="fas fa-clock mr-2"></i> Pending Verification';
-        verifiedInfo.classList.add('hidden');
-        verifyOrderBtn.classList.remove('hidden');
-      }
-    }
-
-    verifyOrderBtn.addEventListener('click', async () => {
-      if (!currentToken) return;
-
-      if (!confirm('Are you sure you want to verify this order?')) return;
-
-      try {
-        verifyOrderBtn.disabled = true;
-        verifyOrderBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Verifying...';
-
-        const res = await fetch('/verify-token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: currentToken.token })
-        });
-
-        const data = await res.json();
-
-        if (data.success) {
-          showSuccess('Order verified successfully!');
-          await fetchTokenDetails(currentToken.token);
-        } else {
-          showError(data.error || 'Verification failed');
-        }
-      } catch (err) {
-        showError('Error verifying order. Please try again.');
-        console.error(err);
-      } finally {
-        verifyOrderBtn.disabled = false;
-        verifyOrderBtn.innerHTML = '<i class="fas fa-check-double mr-2"></i> Verify This Order';
-      }
-    });
-
-    function showError(message) {
-      errorMsg.textContent = message;
-      errorMsg.classList.remove('hidden');
-    }
-
-    function showSuccess(message) {
-      const toast = document.createElement('div');
-      toast.className = 'fixed top-4 right-4 bg-emerald-500 text-white px-6 py-4 rounded-xl shadow-lg z-50';
-      toast.innerHTML = `<i class="fas fa-check mr-2"></i> ${message}`;
-      document.body.appendChild(toast);
-      setTimeout(() => {
-        toast.classList.add('opacity-0', 'transform', 'translate-x-full', 'transition-all', 'duration-300');
-        setTimeout(() => toast.remove(), 300);
-      }, 3000);
-    }
-  </script>
+  <script src="script4.js"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-// server.js - Updated with Profile Setup & Token Pass System
+// server.js - Updated with Profile Setup & Token Pass System with Payment
 const express = require("express");
 require("dotenv").config();
 const mongoose = require("mongoose");
@@ -127,7 +127,16 @@ const tokenSchema = new mongoose.Schema({
   verified: { type: Boolean, default: false },
   verifiedAt: Date,
   expiresAt: Date,
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: Date.now },
+  paymentDetails: {
+    mainAmount: Number,
+    mainUPI: String,
+    commissionAmount: Number,
+    commissionUPI: String,
+    transactionId: String,
+    upiRef: String,
+    paymentTime: Date
+  }
 });
 
 const User = mongoose.model("User", userSchema);
@@ -142,18 +151,19 @@ async function generateDailyToken(date) {
   return `${count + 1}`;
 }
 
+// 4. Update the cleanExpiredTokens function
 async function cleanExpiredTokens() {
   const now = new Date();
-  const cutoffTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 17, 0, 0);
   
-  if (now > cutoffTime) {
-    await Token.deleteMany({ 
-      expiresAt: { $lt: now },
-      verified: false 
-    });
-    console.log("🧹 Cleaned expired tokens");
-  }
+  // Only delete tokens that are expired, unpaid, and unverified
+  await Token.deleteMany({ 
+    expiresAt: { $lt: now },
+    paid: false,
+    verified: false 
+  });
+  console.log("🧹 Cleaned expired unpaid tokens");
 }
+
 
 setInterval(cleanExpiredTokens, 60 * 60 * 1000);
 
@@ -536,7 +546,9 @@ app.post("/book", async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+// Key changes in server.js to fix token expiration issue
 
+// 1. Update the /pay endpoint to set expiration to 24 hours instead of 5 PM same day
 app.post("/pay", async (req, res) => {
   try {
     const { email } = req.body;
@@ -577,7 +589,9 @@ app.post("/pay", async (req, res) => {
     
     const totalAmount = todayUnpaid.reduce((sum, o) => sum + o.price, 0);
     
-    const expiresAt = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 17, 0, 0);
+    // FIXED: Set expiration to 24 hours from now instead of 5 PM today
+    // This gives users time to complete payment
+    const expiresAt = new Date(now.getTime() + (24 * 60 * 60 * 1000)); // 24 hours from now
     
     const tokenDoc = new Token({
       token,
@@ -587,15 +601,15 @@ app.post("/pay", async (req, res) => {
       userPhoto: user.profilePhoto,
       meals,
       totalAmount,
-      paid: true,
+      paid: false, // FIXED: Set to false initially, will be true after payment verification
       verified: false,
       expiresAt
     });
     await tokenDoc.save();
     
+    // Don't mark orders as paid yet - only after payment verification
     todayUnpaid.forEach(order => {
-      order.paid = true;
-      order.token = token;
+      order.token = token; // Assign token but don't mark as paid yet
     });
     
     await user.save();
@@ -613,6 +627,7 @@ app.post("/pay", async (req, res) => {
   }
 });
 
+// 2. Update the /token/:token endpoint to not check expiration for unpaid tokens
 app.get("/token/:token", async (req, res) => {
   try {
     const { token } = req.params;
@@ -623,8 +638,9 @@ app.get("/token/:token", async (req, res) => {
     }
     
     const now = new Date();
-    if (now > tokenDoc.expiresAt && !tokenDoc.verified) {
-      return res.json({ success: false, error: "Token expired" });
+    // FIXED: Only check expiration if token is not paid and not verified
+    if (now > tokenDoc.expiresAt && !tokenDoc.paid && !tokenDoc.verified) {
+      return res.json({ success: false, error: "Token expired. Please create a new order." });
     }
     
     res.json({
@@ -642,6 +658,412 @@ app.get("/token/:token", async (req, res) => {
       expiresAt: tokenDoc.expiresAt
     });
   } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 3. Update payment verification to mark orders as paid and extend expiration
+app.post("/verify-token-payment", async (req, res) => {
+  try {
+    const { token, amount } = req.body;
+    const now = new Date();
+    
+    if (!token || !amount) {
+      return res.json({ success: false, error: "Token and amount required" });
+    }
+    
+    const tokenDoc = await Token.findOne({ token });
+    if (!tokenDoc) {
+      return res.json({ success: false, error: "Invalid token" });
+    }
+    
+    if (tokenDoc.verified) {
+      return res.json({ 
+        success: false, 
+        error: "Token already verified",
+        verifiedAt: tokenDoc.verifiedAt
+      });
+    }
+    
+    // FIXED: Remove expiration check for payment verification
+    // Allow payment even if token expired, as long as it's not verified
+    
+    // Verify amount matches
+    if (Math.abs(tokenDoc.totalAmount - amount) > 0.01) {
+      return res.json({ success: false, error: "Amount mismatch" });
+    }
+    
+    // Calculate commission (0.01% of total amount)
+    const commissionAmount = (amount * 0.0001).toFixed(2);
+    
+    console.log(`
+      ╔═══════════════════════════════════════════════════════╗
+      💰 PAYMENT TRANSACTION DETAILS
+      ╠═══════════════════════════════════════════════════════╣
+      Token: ${token}
+      Main Payment: ₹${amount} → 9483246283@kotak811
+      Commission (0.01%): ₹${commissionAmount} → pgayushrai@okicici
+      User: ${tokenDoc.userEmail}
+      Date: ${new Date().toLocaleString('en-IN')}
+      ╚═══════════════════════════════════════════════════════╝
+    `);
+    
+    // FIXED: Update token to paid and verified, extend expiration to 5 PM today
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const newExpiresAt = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 17, 0, 0);
+    
+    tokenDoc.paid = true;
+    tokenDoc.verified = true;
+    tokenDoc.verifiedAt = now;
+    tokenDoc.expiresAt = newExpiresAt; // Now expires at 5 PM today
+    tokenDoc.paymentDetails = {
+      mainAmount: amount,
+      mainUPI: '9483246283@kotak811',
+      commissionAmount: parseFloat(commissionAmount),
+      commissionUPI: 'pgayushrai@okicici',
+      paymentTime: now
+    };
+    await tokenDoc.save();
+    
+    // FIXED: Now mark user's orders as paid
+    const user = await User.findOne({ email: tokenDoc.userEmail });
+    if (user) {
+      const todayStr = tokenDoc.date;
+      user.orders.forEach(order => {
+        if (order.token === token && new Date(order.date).toDateString() === todayStr) {
+          order.paid = true;
+        }
+      });
+      
+      user.verifiedToday = {
+        date: tokenDoc.date,
+        verified: true,
+        verifiedAt: now,
+        meals: tokenDoc.meals
+      };
+      await user.save();
+    }
+    
+    res.json({ 
+      success: true, 
+      message: "Payment verified and token activated",
+      tokenDoc,
+      paymentDetails: {
+        mainAmount: amount,
+        commissionAmount: parseFloat(commissionAmount)
+      }
+    });
+  } catch (err) {
+    console.error("Payment verification error:", err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
+// Get payment details for a token
+app.get("/token/:token/payment", async (req, res) => {
+  try {
+    const { token } = req.params;
+    
+    const tokenDoc = await Token.findOne({ token });
+    if (!tokenDoc) {
+      return res.json({ success: false, error: "Token not found" });
+    }
+    
+    const commissionAmount = (tokenDoc.totalAmount * 0.0001).toFixed(2);
+    
+    res.json({
+      success: true,
+      token: tokenDoc.token,
+      totalAmount: tokenDoc.totalAmount,
+      mainUPI: '9483246283@kotak811',
+      commissionAmount: parseFloat(commissionAmount),
+      commissionUPI: 'pgayushrai@okicici',
+      verified: tokenDoc.verified,
+      paymentDetails: tokenDoc.paymentDetails || null
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Admin endpoint to view all payment transactions
+app.get("/admin/payments", async (req, res) => {
+  try {
+    const tokens = await Token.find({ verified: true })
+      .sort({ verifiedAt: -1 })
+      .limit(100);
+    
+    const paymentSummary = tokens.map(t => ({
+      token: t.token,
+      userEmail: t.userEmail,
+      userName: t.userName,
+      mainAmount: t.totalAmount,
+      commissionAmount: (t.totalAmount * 0.0001).toFixed(2),
+      verifiedAt: t.verifiedAt,
+      paymentDetails: t.paymentDetails
+    }));
+    
+    const totalMain = tokens.reduce((sum, t) => sum + t.totalAmount, 0);
+    const totalCommission = (totalMain * 0.0001).toFixed(2);
+    
+    res.json({
+      success: true,
+      transactions: paymentSummary,
+      summary: {
+        totalTransactions: tokens.length,
+        totalMainPayments: totalMain,
+        totalCommission: parseFloat(totalCommission),
+        mainUPI: '9483246283@kotak811',
+        commissionUPI: 'pgayushrai@okicici'
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Add this to your server.js file
+
+// Simulated UPI Payment Webhook (for testing)
+// In production, this would be replaced by actual payment gateway webhook
+app.post("/simulate-payment", async (req, res) => {
+  try {
+    const { token, upiRef } = req.body;
+    const now = new Date();
+    
+    if (!token) {
+      return res.json({ success: false, error: "Token required" });
+    }
+    
+    const tokenDoc = await Token.findOne({ token });
+    if (!tokenDoc) {
+      return res.json({ success: false, error: "Invalid token" });
+    }
+    
+    if (tokenDoc.verified) {
+      return res.json({ 
+        success: false, 
+        error: "Token already verified"
+      });
+    }
+    
+    // Simulate payment processing
+    const amount = tokenDoc.totalAmount;
+    const commissionAmount = (amount * 0.0001).toFixed(2);
+    
+    console.log(`
+      ╔═══════════════════════════════════════════════════════╗
+      💰 PAYMENT RECEIVED (Simulated)
+      ╠═══════════════════════════════════════════════════════╣
+      Token: ${token}
+      Amount: ₹${amount}
+      UPI Ref: ${upiRef || 'AUTO-' + Date.now()}
+      Main UPI: 9483246283@kotak811
+      Commission: ₹${commissionAmount} → pgayushrai@okicici
+      Time: ${new Date().toLocaleString('en-IN')}
+      ╚═══════════════════════════════════════════════════════╝
+    `);
+    
+    // Update token
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const newExpiresAt = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 17, 0, 0);
+    
+    tokenDoc.paid = true;
+    tokenDoc.verified = true;
+    tokenDoc.verifiedAt = now;
+    tokenDoc.expiresAt = newExpiresAt;
+    tokenDoc.paymentDetails = {
+      mainAmount: amount,
+      mainUPI: '9483246283@kotak811',
+      commissionAmount: parseFloat(commissionAmount),
+      commissionUPI: 'pgayushrai@okicici',
+      transactionId: 'TXN-' + Date.now(),
+      upiRef: upiRef || 'AUTO-' + Date.now(),
+      paymentTime: now
+    };
+    await tokenDoc.save();
+    
+    // Mark user orders as paid
+    const user = await User.findOne({ email: tokenDoc.userEmail });
+    if (user) {
+      const todayStr = tokenDoc.date;
+      user.orders.forEach(order => {
+        if (order.token === token && new Date(order.date).toDateString() === todayStr) {
+          order.paid = true;
+        }
+      });
+      
+      user.verifiedToday = {
+        date: tokenDoc.date,
+        verified: true,
+        verifiedAt: now,
+        meals: tokenDoc.meals
+      };
+      await user.save();
+    }
+    
+    res.json({ 
+      success: true, 
+      message: "Payment processed successfully",
+      verified: true,
+      verifiedAt: now
+    });
+  } catch (err) {
+    console.error("Payment simulation error:", err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Real UPI Payment Gateway Webhook (for production use)
+// Replace this with your actual payment gateway's webhook endpoint
+app.post("/upi-webhook", async (req, res) => {
+  try {
+    // Verify webhook signature (implement based on your payment gateway)
+    // const signature = req.headers['x-webhook-signature'];
+    // if (!verifySignature(signature, req.body)) {
+    //   return res.status(401).json({ error: "Invalid signature" });
+    // }
+    
+    const { 
+      status, 
+      amount, 
+      token, 
+      upiTransactionId, 
+      payerVPA 
+    } = req.body;
+    
+    if (status !== 'SUCCESS') {
+      return res.json({ received: true });
+    }
+    
+    const tokenDoc = await Token.findOne({ token });
+    if (!tokenDoc || tokenDoc.verified) {
+      return res.json({ received: true });
+    }
+    
+    // Verify amount matches
+    if (Math.abs(tokenDoc.totalAmount - amount) > 0.01) {
+      console.error(`Amount mismatch for token ${token}: expected ${tokenDoc.totalAmount}, got ${amount}`);
+      return res.json({ received: true });
+    }
+    
+    const now = new Date();
+    const commissionAmount = (amount * 0.0001).toFixed(2);
+    
+    console.log(`
+      ╔═══════════════════════════════════════════════════════╗
+      💰 REAL PAYMENT RECEIVED
+      ╠═══════════════════════════════════════════════════════╣
+      Token: ${token}
+      Amount: ₹${amount}
+      UPI Transaction ID: ${upiTransactionId}
+      Payer VPA: ${payerVPA}
+      Main UPI: 9483246283@kotak811
+      Commission: ₹${commissionAmount} → pgayushrai@okicici
+      Time: ${new Date().toLocaleString('en-IN')}
+      ╚═══════════════════════════════════════════════════════╝
+    `);
+    
+    // Update token
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const newExpiresAt = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 17, 0, 0);
+    
+    tokenDoc.paid = true;
+    tokenDoc.verified = true;
+    tokenDoc.verifiedAt = now;
+    tokenDoc.expiresAt = newExpiresAt;
+    tokenDoc.paymentDetails = {
+      mainAmount: amount,
+      mainUPI: '9483246283@kotak811',
+      commissionAmount: parseFloat(commissionAmount),
+      commissionUPI: 'pgayushrai@okicici',
+      transactionId: upiTransactionId,
+      upiRef: payerVPA,
+      paymentTime: now
+    };
+    await tokenDoc.save();
+    
+    // Mark user orders as paid
+    const user = await User.findOne({ email: tokenDoc.userEmail });
+    if (user) {
+      const todayStr = tokenDoc.date;
+      user.orders.forEach(order => {
+        if (order.token === token && new Date(order.date).toDateString() === todayStr) {
+          order.paid = true;
+        }
+      });
+      
+      user.verifiedToday = {
+        date: tokenDoc.date,
+        verified: true,
+        verifiedAt: now,
+        meals: tokenDoc.meals
+      };
+      await user.save();
+    }
+    
+    res.json({ received: true, verified: true });
+  } catch (err) {
+    console.error("Webhook error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Testing endpoint - Remove in production
+app.get("/test-payment/:token", async (req, res) => {
+  const { token } = req.params;
+  
+  // Simulate payment after 3 seconds
+  setTimeout(async () => {
+    await fetch(`http://localhost:${PORT}/simulate-payment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        token, 
+        upiRef: 'TEST-' + Date.now() 
+      })
+    });
+  }, 3000);
+  
+  res.send(`
+    <html>
+      <body style="font-family: Arial; padding: 40px; text-align: center;">
+        <h1>Payment Simulation Started</h1>
+        <p>Token ${token} will be verified in 3 seconds...</p>
+        <p>Go back to dashboard4.html to see auto-detection in action!</p>
+      </body>
+    </html>
+  `);
+});
+// Webhook endpoint for actual UPI payment verification (for future integration)
+app.post("/webhook/payment-confirmation", async (req, res) => {
+  try {
+    const { transactionId, token, amount, upiRef, status } = req.body;
+    
+    if (status === 'SUCCESS') {
+      const tokenDoc = await Token.findOne({ token });
+      if (tokenDoc && !tokenDoc.verified) {
+        tokenDoc.verified = true;
+        tokenDoc.verifiedAt = new Date();
+        tokenDoc.paymentDetails = {
+          transactionId,
+          upiRef,
+          mainAmount: amount,
+          mainUPI: '9483246283@kotak811',
+          commissionAmount: (amount * 0.0001).toFixed(2),
+          commissionUPI: 'pgayushrai@okicici',
+          paymentTime: new Date()
+        };
+        await tokenDoc.save();
+        
+        console.log(`✅ Payment confirmed for token ${token} - Amount: ₹${amount}`);
+      }
+    }
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Webhook error:", err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });
