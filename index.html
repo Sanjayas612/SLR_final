@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>MessMate - Login or Register</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
     .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
     .glass-effect { background: rgba(255,255,255,0.08); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.12); }
@@ -30,10 +31,37 @@
     </div>
 
     <div class="glass-effect rounded-2xl p-8 shadow-2xl">
+      <!-- Google Sign-In Section -->
+      <div id="google-signin-section" class="mb-6">
+        <div class="text-center mb-4">
+          <h2 class="text-xl font-bold text-white mb-2">Sign in with Google</h2>
+          <p class="text-white/60 text-sm mb-4">Use your @vvce.ac.in account</p>
+        </div>
+        
+        <div id="g_id_onload"
+             data-client_id="67430401790-jdomcgb5s0vcvsp6ln56j3g3aem2h26v.apps.googleusercontent.com"
+             data-callback="handleCredentialResponse"
+             data-auto_prompt="false">
+        </div>
+        <div class="g_id_signin flex justify-center" 
+             data-type="standard" 
+             data-shape="pill" 
+             data-theme="filled_blue"
+             data-size="large"
+             data-width="300">
+        </div>
+        
+        <div class="flex items-center my-6">
+          <div class="flex-1 border-t border-white/20"></div>
+          <span class="px-4 text-white/50 text-sm">OR</span>
+          <div class="flex-1 border-t border-white/20"></div>
+        </div>
+      </div>
+
       <!-- Login -->
       <div id="login-form" class="space-y-6">
         <div class="text-center mb-6">
-          <h2 class="text-2xl font-bold text-white mb-2">Login</h2>
+          <h2 class="text-2xl font-bold text-white mb-2">Email Login</h2>
         </div>
         <form id="login-form-submit" class="space-y-5">
           <div>
@@ -96,27 +124,60 @@
   </div>
 
 <script>
-  // simple toggles
+  // Google OAuth Handler
+  async function handleCredentialResponse(response) {
+    try {
+      const res = await fetch('/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: response.credential })
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        localStorage.setItem('messmate_user_email', data.email);
+        localStorage.setItem('messmate_user_role', data.role);
+        localStorage.setItem('messmate_user_name', data.name);
+        
+        if (data.role === 'student') window.location.href = '/dashboard';
+        else if (data.role === 'producer') window.location.href = '/dashboard1';
+        else window.location.href = '/dashboard';
+      } else {
+        showError('login-error', data.error || 'Authentication failed');
+      }
+    } catch (err) {
+      showError('login-error', 'Authentication failed. Please try again.');
+    }
+  }
+
+  // Form toggles
   function toggleForm(showRegister) {
     const loginForm = document.getElementById('login-form');
     const registerForm = document.getElementById('register-form');
+    const googleSection = document.getElementById('google-signin-section');
+    
     if (showRegister) {
       loginForm.classList.add('hidden');
+      googleSection.classList.add('hidden');
       registerForm.classList.remove('hidden');
       registerForm.classList.add('slide-in');
       document.getElementById('login-error').classList.add('hidden');
     } else {
       registerForm.classList.add('hidden');
       loginForm.classList.remove('hidden');
+      googleSection.classList.remove('hidden');
       loginForm.classList.add('slide-in');
       document.getElementById('register-error').classList.add('hidden');
     }
   }
-  document.getElementById('show-register').addEventListener('click', ()=> toggleForm(true));
-  document.getElementById('show-login').addEventListener('click', ()=> toggleForm(false));
+  
+  document.getElementById('show-register').addEventListener('click', () => toggleForm(true));
+  document.getElementById('show-login').addEventListener('click', () => toggleForm(false));
 
-  function toggleLoader(show) {
-    // placeholder - loader element not implemented here. Keep for compatibility
+  function showError(elementId, message) {
+    const err = document.getElementById(elementId);
+    err.textContent = message;
+    err.classList.remove('hidden');
   }
 
   // LOGIN
@@ -135,21 +196,18 @@
       });
       const data = await response.json();
       if (data.success) {
-        // store basic user info locally for dashboard usage
         localStorage.setItem('messmate_user_email', data.email);
         localStorage.setItem('messmate_user_role', data.role);
         localStorage.setItem('messmate_user_name', data.name || '');
-        // redirect to dashboard routes served by server
+        
         if (data.role === 'student') window.location.href = '/dashboard';
         else if (data.role === 'producer') window.location.href = '/dashboard1';
         else window.location.href = '/dashboard';
       } else {
-        err.textContent = data.error || 'Invalid email or password';
-        err.classList.remove('hidden');
+        showError('login-error', data.error || 'Invalid email or password');
       }
     } catch (errFetch) {
-      err.textContent = 'Login failed. Try again.';
-      err.classList.remove('hidden');
+      showError('login-error', 'Login failed. Try again.');
     }
   });
 
@@ -165,8 +223,7 @@
     err.classList.add('hidden');
 
     if (password !== confirm) {
-      err.textContent = 'Passwords do not match';
-      err.classList.remove('hidden');
+      showError('register-error', 'Passwords do not match');
       return;
     }
 
@@ -178,21 +235,18 @@
       });
       const data = await response.json();
       if (data.success) {
-        // store user info
         localStorage.setItem('messmate_user_email', data.email || email);
         localStorage.setItem('messmate_user_role', data.role || role);
         localStorage.setItem('messmate_user_name', data.name || name);
-        // redirect appropriately
+        
         if (data.role === 'student' || role === 'student') window.location.href = '/dashboard';
         else window.location.href = '/dashboard1';
       } else {
         const msg = data.error === 'duplicate' ? 'Email already registered' : (data.error || 'Registration failed');
-        err.textContent = msg;
-        err.classList.remove('hidden');
+        showError('register-error', msg);
       }
     } catch (errFetch) {
-      err.textContent = 'Registration failed. Try again.';
-      err.classList.remove('hidden');
+      showError('register-error', 'Registration failed. Try again.');
     }
   });
 </script>

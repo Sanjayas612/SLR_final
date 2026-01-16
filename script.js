@@ -1,6 +1,4 @@
-// script.js - Student Dashboard Logic (Improved)
-// Place this file in the same directory as dashboard.html
-
+// script_updated.js - Student Dashboard Logic with Token System
 const userEmail = localStorage.getItem('messmate_user_email');
 const userRole = localStorage.getItem('messmate_user_role') || 'student';
 const userName = localStorage.getItem('messmate_user_name') || '';
@@ -110,7 +108,6 @@ window.bookMeal = async (mealName, price) => {
     });
     const data = await res.json();
     if (data.success) {
-      // Enhanced alert with better UX
       const alertDiv = document.createElement('div');
       alertDiv.className = 'fixed top-4 right-4 bg-emerald-500 text-white px-6 py-4 rounded-xl shadow-lg z-50 animate-pulse';
       alertDiv.innerHTML = `<i class="fas fa-check mr-2"></i> ${mealName} booked successfully!`;
@@ -140,7 +137,7 @@ function showErrorToast(message) {
   }, 3000);
 }
 
-// Load orders (unchanged core logic, but improved rendering)
+// Load orders
 async function loadOrders() {
   try {
     const res = await fetch(`/user/${userEmail}`);
@@ -148,7 +145,7 @@ async function loadOrders() {
     if (data.success) {
       userOrders = data.orders || [];
       renderOrders();
-      updateProfileModal(); // In case modal is open
+      updateProfileModal();
     }
   } catch (err) {
     console.error('Error loading orders:', err);
@@ -161,6 +158,7 @@ function renderOrders() {
   const now = new Date();
   const todayStr = now.toDateString();
   const todayUnpaid = userOrders.filter(o => new Date(o.date).toDateString() === todayStr && !o.paid);
+  const todayPaid = userOrders.filter(o => new Date(o.date).toDateString() === todayStr && o.paid);
 
   let html = '';
   if (todayUnpaid.length > 0) {
@@ -188,14 +186,19 @@ function renderOrders() {
           <i class="fas fa-times mr-1"></i> Cancel
         </button>`;
       }
+      let tokenInfo = '';
+      if (o.token && o.paid) {
+        tokenInfo = `<span class="ml-3 text-indigo-400 font-semibold">Token: #${o.token}</span>`;
+      }
       return `
         <div class="bg-slate-700/40 border border-slate-600/50 rounded-xl p-6 mb-4 hover:border-indigo-500/50 transition-all duration-300 hover:shadow-lg group">
           <div class="flex justify-between items-start">
             <div class="flex-1">
               <p class="font-bold text-white text-xl mb-1">${o.mealName}</p>
-              <p class="text-base text-slate-300 mt-1 flex items-center gap-2">
+              <p class="text-base text-slate-300 mt-1 flex items-center gap-2 flex-wrap">
                 <i class="fas fa-clock text-xs"></i> ${new Date(o.date).toLocaleString()} 
                 <span class="${statusClass} font-semibold px-2 py-1 rounded-full text-xs bg-${o.paid ? 'emerald' : 'red'}-900/30">${paidStatus}</span>
+                ${tokenInfo}
               </p>
             </div>
             <div class="text-right ml-4">
@@ -215,19 +218,17 @@ function renderOrders() {
   const payBtn = document.getElementById('payAllBtn');
   if (payBtn) payBtn.addEventListener('click', () => handlePay(userEmail));
 
-  // QR Section
-  const savedQR = localStorage.getItem(`qr_${todayStr}_${userEmail}`);
-  const savedQRData = localStorage.getItem(`qrData_${todayStr}_${userEmail}`);
-  const qrSection = document.getElementById('qrSection');
-  if (savedQR && savedQRData && todayUnpaid.length === 0) {
-    qrSection.classList.remove('hidden');
-    document.getElementById('dashboardQR').src = savedQR;
-    displayQRMeals(savedQRData, 'qrMealsList', 'qrMealsItems');
-    document.getElementById('refreshQR').onclick = () => {
-      document.getElementById('dashboardQR').src = savedQR;
-    };
+  // Token Section
+  const savedToken = localStorage.getItem(`token_${todayStr}_${userEmail}`);
+  const savedTokenData = localStorage.getItem(`tokenData_${todayStr}_${userEmail}`);
+  const tokenSection = document.getElementById('tokenSection');
+  
+  if (savedToken && savedTokenData && todayPaid.length > 0) {
+    tokenSection.classList.remove('hidden');
+    document.getElementById('tokenNumber').textContent = savedToken;
+    displayTokenMeals(savedTokenData, 'tokenMealsList', 'tokenMealsItems');
   } else {
-    qrSection.classList.add('hidden');
+    tokenSection.classList.add('hidden');
   }
 }
 
@@ -248,12 +249,14 @@ async function handlePay(email) {
     const data = await res.json();
 
     if (data.success) {
-      document.getElementById('qrCanvas').src = data.qrBase64;
-      displayQRMeals(data.qrData, 'modalMealsList', 'modalMealsItems');
+      document.getElementById('modalTokenNumber').textContent = data.token;
+      displayTokenMeals(JSON.stringify(data.meals), 'modalMealsList', 'modalMealsItems');
+      
       const today = new Date().toDateString();
-      localStorage.setItem(`qr_${today}_${email}`, data.qrBase64);
-      localStorage.setItem(`qrData_${today}_${email}`, data.qrData);
-      document.getElementById('qrModal').classList.remove('hidden');
+      localStorage.setItem(`token_${today}_${email}`, data.token);
+      localStorage.setItem(`tokenData_${today}_${email}`, JSON.stringify(data.meals));
+      
+      document.getElementById('tokenModal').classList.remove('hidden');
       loadOrders();
     } else {
       showErrorToast(`❌ ${data.error || 'Payment failed'}`);
@@ -305,20 +308,20 @@ window.cancelOrder = async (orderId) => {
   }
 };
 
-// QR Display Helper
-function displayQRMeals(qrData, containerId, itemsId) {
+// Token Display Helper
+function displayTokenMeals(mealsData, containerId, itemsId) {
   try {
-    const meals = JSON.parse(qrData);
+    const meals = JSON.parse(mealsData);
     const container = document.getElementById(containerId);
     const itemsList = document.getElementById(itemsId);
     if (meals.length > 0) {
-      itemsList.innerHTML = meals.map(m => `<li class="flex items-center gap-2"><i class="fas fa-check text-emerald-400 text-sm"></i> ${m.name} - ₹${m.price}</li>`).join('');
+      itemsList.innerHTML = meals.map(m => `<li class="flex items-center justify-between gap-2 bg-white/5 p-3 rounded-lg"><span class="flex items-center gap-2"><i class="fas fa-check text-emerald-400 text-sm"></i> ${m.name}</span> <span class="font-bold">Qty: ${m.quantity} × ₹${m.price}</span></li>`).join('');
       container.classList.remove('hidden');
     } else {
       container.classList.add('hidden');
     }
   } catch (e) {
-    console.error('Error parsing QR data:', e);
+    console.error('Error parsing token data:', e);
     document.getElementById(containerId).classList.add('hidden');
   }
 }
@@ -372,6 +375,7 @@ function updateProfileModal() {
   if (userOrders.length > 0) {
     profileOrdersEl.innerHTML = userOrders.map(o => {
       const paidStatus = o.paid ? 'Paid' : 'Unpaid';
+      let tokenInfo = o.token && o.paid ? `<br/><span class="text-indigo-400 text-sm">Token: #${o.token}</span>` : '';
       return `
         <div class="bg-slate-700/40 border border-slate-600/50 rounded-xl p-6 hover:border-indigo-500/50 transition-all duration-300 group">
           <div class="flex justify-between items-start">
@@ -380,6 +384,7 @@ function updateProfileModal() {
               <p class="text-sm text-slate-300 mt-1 flex items-center gap-2">
                 <i class="fas fa-clock text-xs"></i> ${new Date(o.date).toLocaleString()} 
                 <span class="text-${o.paid ? 'emerald' : 'red'}-400 font-semibold px-2 py-1 rounded-full text-xs bg-${o.paid ? 'emerald' : 'red'}-900/30">${paidStatus}</span>
+                ${tokenInfo}
               </p>
             </div>
             <p class="text-lg font-bold text-emerald-400 ml-4">₹${o.price}</p>
@@ -563,21 +568,18 @@ function updateFoodChart() {
       },
       animation: {
         duration: 1500,
-        easing: 'easeInOutQuart',
-        onComplete: () => {
-          ctx.font = Chart.helpers.fontString(Chart.defaults.font.size, 'normal', Chart.defaults.font.family);
-        }
+        easing: 'easeInOutQuart'
       }
     }
   });
 }
 
-// QR Modal Close
-document.getElementById('closeQR').addEventListener('click', () => {
-  document.getElementById('qrModal').classList.add('hidden');
+// Token Modal Close
+document.getElementById('closeToken').addEventListener('click', () => {
+  document.getElementById('tokenModal').classList.add('hidden');
 });
-document.getElementById('qrModal').addEventListener('click', (e) => {
-  if (e.target.id === 'qrModal') document.getElementById('qrModal').classList.add('hidden');
+document.getElementById('tokenModal').addEventListener('click', (e) => {
+  if (e.target.id === 'tokenModal') document.getElementById('tokenModal').classList.add('hidden');
 });
 
 // Initialize

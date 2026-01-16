@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Token Verification - MessMate</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <style>
+    .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+    .glass-effect { background: rgba(255,255,255,0.08); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.12); }
+    .fade-in { animation: fadeIn 0.6s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    .gradient-text {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 text-white">
+  <div class="max-w-4xl mx-auto px-4 py-8">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-8">
+      <div>
+        <h1 class="text-4xl font-bold gradient-text">Token Verification</h1>
+        <p class="text-slate-300 mt-2">Enter token to verify order details</p>
+      </div>
+      <button onclick="window.location.href='/dashboard1'" class="bg-slate-700 hover:bg-slate-600 px-6 py-3 rounded-xl transition-all duration-300">
+        <i class="fas fa-arrow-left mr-2"></i> Back
+      </button>
+    </div>
+
+    <!-- Token Input Section -->
+    <div class="glass-effect rounded-2xl p-8 mb-8 fade-in">
+      <div class="flex gap-4">
+        <input 
+          type="text" 
+          id="tokenInput" 
+          placeholder="Enter Token Number (e.g., 1, 2, 3...)" 
+          class="flex-1 px-6 py-4 bg-slate-800/50 border border-slate-600/50 rounded-xl text-white text-lg focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/50"
+        />
+        <button 
+          id="verifyBtn" 
+          class="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 px-8 py-4 rounded-xl font-semibold transition-all duration-300 hover:scale-105 shadow-lg"
+        >
+          <i class="fas fa-search mr-2"></i> Verify Token
+        </button>
+      </div>
+      <p id="errorMsg" class="mt-4 text-red-400 hidden"></p>
+    </div>
+
+    <!-- Token Details Section -->
+    <div id="tokenDetails" class="hidden fade-in">
+      <!-- User Info -->
+      <div class="glass-effect rounded-2xl p-8 mb-6">
+        <h2 class="text-2xl font-bold mb-6 text-indigo-200 flex items-center gap-3">
+          <i class="fas fa-user-circle"></i> Customer Details
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="bg-slate-700/40 p-6 rounded-xl">
+            <p class="text-slate-400 text-sm mb-2">Name</p>
+            <p id="userName" class="text-white text-xl font-semibold">-</p>
+          </div>
+          <div class="bg-slate-700/40 p-6 rounded-xl">
+            <p class="text-slate-400 text-sm mb-2">Email</p>
+            <p id="userEmail" class="text-white text-xl font-semibold">-</p>
+          </div>
+          <div class="bg-slate-700/40 p-6 rounded-xl">
+            <p class="text-slate-400 text-sm mb-2">Token Number</p>
+            <p id="tokenNumber" class="text-indigo-400 text-2xl font-bold">-</p>
+          </div>
+          <div class="bg-slate-700/40 p-6 rounded-xl">
+            <p class="text-slate-400 text-sm mb-2">Date</p>
+            <p id="tokenDate" class="text-white text-xl font-semibold">-</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Order Details -->
+      <div class="glass-effect rounded-2xl p-8 mb-6">
+        <h2 class="text-2xl font-bold mb-6 text-indigo-200 flex items-center gap-3">
+          <i class="fas fa-utensils"></i> Order Details
+        </h2>
+        <div id="mealsList" class="space-y-4 mb-6"></div>
+        <div class="border-t border-slate-600/50 pt-6 mt-6">
+          <div class="flex justify-between items-center text-2xl font-bold">
+            <span class="text-slate-300">Total Amount:</span>
+            <span id="totalAmount" class="text-emerald-400">₹0</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Status Section -->
+      <div class="glass-effect rounded-2xl p-8">
+        <div class="flex items-center justify-between mb-6">
+          <h2 class="text-2xl font-bold text-indigo-200 flex items-center gap-3">
+            <i class="fas fa-check-circle"></i> Verification Status
+          </h2>
+          <div id="statusBadge" class="px-6 py-3 rounded-full font-semibold text-lg"></div>
+        </div>
+        <div id="verifiedInfo" class="hidden bg-emerald-900/30 border border-emerald-500/50 rounded-xl p-6">
+          <p class="text-emerald-300 flex items-center gap-2">
+            <i class="fas fa-info-circle"></i>
+            <span>Verified at: <span id="verifiedAt" class="font-semibold">-</span></span>
+          </p>
+        </div>
+        <button 
+          id="verifyOrderBtn" 
+          class="hidden w-full mt-6 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 px-8 py-4 rounded-xl font-semibold transition-all duration-300 hover:scale-105 shadow-lg text-lg"
+        >
+          <i class="fas fa-check-double mr-2"></i> Verify This Order
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const tokenInput = document.getElementById('tokenInput');
+    const verifyBtn = document.getElementById('verifyBtn');
+    const errorMsg = document.getElementById('errorMsg');
+    const tokenDetails = document.getElementById('tokenDetails');
+    const verifyOrderBtn = document.getElementById('verifyOrderBtn');
+
+    let currentToken = null;
+
+    // Verify token on button click
+    verifyBtn.addEventListener('click', async () => {
+      const token = tokenInput.value.trim();
+      if (!token) {
+        showError('Please enter a token number');
+        return;
+      }
+      await fetchTokenDetails(token);
+    });
+
+    // Also verify on Enter key
+    tokenInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') verifyBtn.click();
+    });
+
+    async function fetchTokenDetails(token) {
+      try {
+        verifyBtn.disabled = true;
+        verifyBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Verifying...';
+        errorMsg.classList.add('hidden');
+
+        const res = await fetch(`/token/${token}`);
+        const data = await res.json();
+
+        if (data.success) {
+          currentToken = data;
+          displayTokenDetails(data);
+          tokenDetails.classList.remove('hidden');
+        } else {
+          showError(data.error || 'Token not found');
+          tokenDetails.classList.add('hidden');
+        }
+      } catch (err) {
+        showError('Error fetching token details. Please try again.');
+        console.error(err);
+      } finally {
+        verifyBtn.disabled = false;
+        verifyBtn.innerHTML = '<i class="fas fa-search mr-2"></i> Verify Token';
+      }
+    }
+
+    function displayTokenDetails(data) {
+      // User details
+      document.getElementById('userName').textContent = data.userName;
+      document.getElementById('userEmail').textContent = data.userEmail;
+      document.getElementById('tokenNumber').textContent = `#${data.token}`;
+      document.getElementById('tokenDate').textContent = new Date(data.date).toLocaleDateString('en-IN', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+
+      // Meals list
+      const mealsList = document.getElementById('mealsList');
+      mealsList.innerHTML = data.meals.map(meal => `
+        <div class="bg-slate-700/40 p-6 rounded-xl border border-slate-600/50 hover:border-indigo-500/50 transition-all duration-300">
+          <div class="flex justify-between items-center">
+            <div class="flex-1">
+              <p class="text-white text-xl font-semibold mb-2">${meal.name}</p>
+              <p class="text-slate-400 text-sm">Price per item: ₹${meal.price}</p>
+            </div>
+            <div class="text-right">
+              <p class="text-indigo-400 text-lg font-bold mb-1">Qty: ${meal.quantity}</p>
+              <p class="text-emerald-400 text-xl font-bold">₹${meal.price * meal.quantity}</p>
+            </div>
+          </div>
+        </div>
+      `).join('');
+
+      // Total amount
+      document.getElementById('totalAmount').textContent = `₹${data.totalAmount}`;
+
+      // Status
+      const statusBadge = document.getElementById('statusBadge');
+      const verifiedInfo = document.getElementById('verifiedInfo');
+      
+      if (data.verified) {
+        statusBadge.className = 'px-6 py-3 rounded-full font-semibold text-lg bg-emerald-900/30 text-emerald-400 border border-emerald-500/50';
+        statusBadge.innerHTML = '<i class="fas fa-check-circle mr-2"></i> Verified';
+        verifiedInfo.classList.remove('hidden');
+        document.getElementById('verifiedAt').textContent = new Date(data.verifiedAt).toLocaleString('en-IN');
+        verifyOrderBtn.classList.add('hidden');
+      } else {
+        statusBadge.className = 'px-6 py-3 rounded-full font-semibold text-lg bg-yellow-900/30 text-yellow-400 border border-yellow-500/50';
+        statusBadge.innerHTML = '<i class="fas fa-clock mr-2"></i> Pending Verification';
+        verifiedInfo.classList.add('hidden');
+        verifyOrderBtn.classList.remove('hidden');
+      }
+    }
+
+    verifyOrderBtn.addEventListener('click', async () => {
+      if (!currentToken) return;
+
+      if (!confirm('Are you sure you want to verify this order?')) return;
+
+      try {
+        verifyOrderBtn.disabled = true;
+        verifyOrderBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Verifying...';
+
+        const res = await fetch('/verify-token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: currentToken.token })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          showSuccess('Order verified successfully!');
+          await fetchTokenDetails(currentToken.token);
+        } else {
+          showError(data.error || 'Verification failed');
+        }
+      } catch (err) {
+        showError('Error verifying order. Please try again.');
+        console.error(err);
+      } finally {
+        verifyOrderBtn.disabled = false;
+        verifyOrderBtn.innerHTML = '<i class="fas fa-check-double mr-2"></i> Verify This Order';
+      }
+    });
+
+    function showError(message) {
+      errorMsg.textContent = message;
+      errorMsg.classList.remove('hidden');
+    }
+
+    function showSuccess(message) {
+      const toast = document.createElement('div');
+      toast.className = 'fixed top-4 right-4 bg-emerald-500 text-white px-6 py-4 rounded-xl shadow-lg z-50';
+      toast.innerHTML = `<i class="fas fa-check mr-2"></i> ${message}`;
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'transform', 'translate-x-full', 'transition-all', 'duration-300');
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+  </script>
+</body>
+</html>

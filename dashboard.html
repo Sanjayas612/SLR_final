@@ -5,72 +5,68 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Student Dashboard - MessMate</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <style>
-    @keyframes slideIn {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    .meal-card { 
-      animation: slideIn 0.4s ease-out; 
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    .meal-card:hover {
-      transform: translateY(-8px);
-      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
-    }
-    .rating-update { 
-      animation: pulse 0.6s ease-in-out; 
-    }
-    @keyframes pulse {
-      0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
-      70% { transform: scale(1.02); box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
-      100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
-    }
-    .shimmer {
-      background: linear-gradient(90deg, #1f2937 25%, #374151 50%, #1f2937 75%);
-      background-size: 200% 100%;
-      animation: shimmer 2s infinite;
-    }
-    @keyframes shimmer {
-      0% { background-position: 200% 0; }
-      100% { background-position: -200% 0; }
-    }
-    .image-container {
-      position: relative;
-      overflow: hidden;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    }
-    .meal-image {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    .meal-card:hover .meal-image {
-      transform: scale(1.08);
-    }
     .gradient-text {
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
-      background-clip: text;
     }
-    .chart-container {
-      background: linear-gradient(135deg, rgba(31, 41, 55, 0.8) 0%, rgba(55, 65, 81, 0.8) 100%);
-      border-radius: 12px;
-      padding: 20px;
-      border: 1px solid rgba(148, 163, 184, 0.2);
-      backdrop-filter: blur(10px);
+    .modal-overlay { backdrop-filter: blur(8px); }
+    .token-pass {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow: 0 20px 60px rgba(102, 126, 234, 0.4);
     }
-    .modal-overlay {
-      backdrop-filter: blur(8px);
+    .profile-img {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 4px solid white;
     }
   </style>
 </head>
-<body class="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 text-white overflow-x-hidden">
-  <div class="max-w-7xl mx-auto px-4 md:px-8 py-6">
+<body class="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 text-white">
+  
+  <!-- Profile Setup Modal -->
+  <div id="profileSetupModal" class="fixed inset-0 bg-black/80 modal-overlay flex items-center justify-center z-50 hidden">
+    <div class="bg-slate-800/95 backdrop-blur-sm rounded-2xl p-8 max-w-md w-full mx-4 border border-slate-700/50">
+      <h3 class="text-3xl font-bold gradient-text mb-6 text-center">
+        <i class="fas fa-user-circle"></i> Complete Your Profile
+      </h3>
+      <p class="text-slate-300 mb-6 text-center">Please add your photo and name to continue</p>
+      
+      <div class="mb-6 text-center">
+        <div class="inline-block relative">
+          <img id="previewPhoto" src="https://via.placeholder.com/120/667eea/ffffff?text=Photo" class="profile-img mb-4">
+          <label for="photoInput" class="absolute bottom-2 right-2 bg-indigo-600 hover:bg-indigo-700 p-2 rounded-full cursor-pointer">
+            <i class="fas fa-camera"></i>
+          </label>
+        </div>
+        <input type="file" id="photoInput" accept="image/*" class="hidden">
+      </div>
+      
+      <div class="mb-6">
+        <label class="block text-sm font-semibold text-slate-300 mb-2">
+          <i class="fas fa-user mr-2"></i> Full Name
+        </label>
+        <input 
+          type="text" 
+          id="nameInput" 
+          placeholder="Enter your name"
+          class="w-full bg-slate-700/50 border border-slate-600 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500"
+        >
+      </div>
+      
+      <button id="saveProfileBtn" class="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 px-8 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg">
+        <i class="fas fa-check mr-2"></i> Save & Continue
+      </button>
+    </div>
+  </div>
+
+  <div id="mainContent" class="max-w-7xl mx-auto px-4 md:px-8 py-6">
     <!-- Header -->
     <div class="flex justify-between items-center mb-12">
       <div>
@@ -78,128 +74,281 @@
         <p id="welcome" class="text-lg text-indigo-200 mt-2 font-medium"></p>
       </div>
       <div class="flex items-center gap-4">
-        <button id="profileBtn" class="text-2xl p-3 bg-slate-800/50 hover:bg-slate-700/50 rounded-full transition-all duration-300 hover:scale-110" title="Profile">
+        <button id="profileBtn" class="text-2xl p-3 bg-slate-800/50 hover:bg-slate-700/50 rounded-full transition-all">
           <i class="fas fa-user"></i>
         </button>
-        <button id="logout" class="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 px-8 py-3 rounded-xl font-semibold transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl">Logout</button>
+        <button id="logout" class="bg-gradient-to-r from-red-500 to-red-600 px-8 py-3 rounded-xl font-semibold transition-all">Logout</button>
       </div>
     </div>
 
+    <!-- Token Pass Section -->
+    <section id="tokenPassSection" class="mb-16 hidden">
+      <h2 class="text-3xl font-bold mb-8 text-indigo-200">
+        <i class="fas fa-ticket-alt"></i> Your Token Pass
+      </h2>
+      <div class="token-pass text-center">
+        <div class="flex items-center justify-center gap-6 mb-6">
+          <img id="tokenUserPhoto" src="" class="profile-img">
+          <div class="text-left">
+            <p class="text-white/80 text-lg mb-2">Student Name</p>
+            <p id="tokenUserName" class="text-white text-2xl font-bold">-</p>
+          </div>
+        </div>
+        <div class="bg-white/10 p-6 rounded-xl mb-4">
+          <p class="text-white/80 text-xl mb-2">Token Number</p>
+          <p id="tokenNumber" class="text-white text-6xl font-bold">-</p>
+        </div>
+        <div id="tokenMealsList" class="bg-white/10 p-4 rounded-xl hidden">
+          <h4 class="font-semibold mb-3 text-white">Your Meals:</h4>
+          <ul id="tokenMealsItems" class="space-y-2 text-sm"></ul>
+        </div>
+        <p class="text-white/70 mt-4"><i class="fas fa-info-circle mr-2"></i> Valid until 5:00 PM today</p>
+      </div>
+    </section>
+
     <!-- Meals Section -->
     <section class="mb-16">
-      <h2 class="text-3xl font-bold mb-8 text-indigo-200 flex items-center gap-3">
+      <h2 class="text-3xl font-bold mb-8 text-indigo-200">
         <i class="fas fa-utensils"></i> Available Meals
       </h2>
       <div id="meals" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"></div>
     </section>
 
     <!-- Orders Section -->
-    <section class="mb-16">
-      <h2 class="text-3xl font-bold mb-8 text-indigo-200 flex items-center gap-3">
+    <section>
+      <h2 class="text-3xl font-bold mb-8 text-indigo-200">
         <i class="fas fa-shopping-bag"></i> Your Orders
       </h2>
-      <div id="orders" class="bg-slate-800/30 backdrop-blur-sm p-8 rounded-2xl border border-slate-700/30 shadow-2xl"></div>
-
-      <!-- Today's QR Section -->
-      <div id="qrSection" class="mt-8 hidden bg-slate-800/30 backdrop-blur-sm p-8 rounded-2xl border border-slate-700/30 text-center shadow-2xl">
-        <h3 class="text-2xl font-bold mb-6 text-indigo-200 flex items-center justify-center gap-3 mx-auto">
-          <i class="fas fa-qrcode"></i> Today's QR Code
-        </h3>
-        <img id="dashboardQR" class="mx-auto mb-6 border-2 border-indigo-500 rounded-xl shadow-lg" alt="QR Code" style="width: 220px; height: 220px;">
-        <p class="text-lg text-slate-300 mb-4">Scan to confirm today's meals</p>
-        <div id="qrMealsList" class="mt-6 text-left bg-slate-700/40 p-4 rounded-xl border border-slate-600/50 hidden">
-          <h4 class="font-semibold mb-3 text-emerald-300 flex items-center gap-2">
-            <i class="fas fa-check-circle"></i> Contains:
-          </h4>
-          <ul id="qrMealsItems" class="space-y-2 text-sm"></ul>
-        </div>
-        <button id="refreshQR" class="mt-6 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 px-6 py-3 rounded-xl text-white font-semibold transition-all duration-300 hover:scale-105 shadow-lg">
-          <i class="fas fa-sync-alt mr-2"></i> Refresh QR
-        </button>
-      </div>
+      <div id="orders" class="bg-slate-800/30 p-8 rounded-2xl"></div>
     </section>
   </div>
 
-  <!-- Profile Modal -->
-  <div id="profileModal" class="fixed inset-0 bg-black/60 modal-overlay flex items-center justify-center z-50 hidden">
-    <div class="bg-slate-800/95 backdrop-blur-sm rounded-2xl p-8 max-w-6xl max-h-[95vh] overflow-y-auto border border-slate-700/50 shadow-2xl w-full mx-4 md:mx-0">
-      <div class="flex justify-between items-center mb-8">
-        <h3 class="text-3xl font-bold gradient-text flex items-center gap-3">
-          <i class="fas fa-user-circle"></i> Profile & Order History
-        </h3>
-        <button id="closeProfile" class="text-3xl hover:text-red-400 transition-colors duration-200">×</button>
-      </div>
+  <script>
+    const userEmail = localStorage.getItem('messmate_user_email');
+    const userName = localStorage.getItem('messmate_user_name') || '';
+    let profileComplete = localStorage.getItem('messmate_profile_complete') === 'true';
+    let profilePhoto = localStorage.getItem('messmate_profile_photo');
+
+    if (!userEmail) window.location.href = '/';
+
+    // Check profile completion
+    async function checkProfile() {
+      const res = await fetch(`/user/${userEmail}`);
+      const data = await res.json();
+      if (data.success) {
+        profileComplete = data.profileComplete;
+        profilePhoto = data.profilePhoto;
+        localStorage.setItem('messmate_profile_complete', profileComplete);
+        localStorage.setItem('messmate_profile_photo', profilePhoto || '');
+        
+        if (!profileComplete) {
+          document.getElementById('profileSetupModal').classList.remove('hidden');
+          document.getElementById('mainContent').style.display = 'none';
+          if (data.name) document.getElementById('nameInput').value = data.name;
+        } else {
+          document.getElementById('mainContent').style.display = 'block';
+        }
+      }
+    }
+
+    // Photo preview
+    document.getElementById('photoInput').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          document.getElementById('previewPhoto').src = e.target.result;
+        }
+        reader.readAsDataURL(file);
+      }
+    });
+
+    // Save profile
+    document.getElementById('saveProfileBtn').addEventListener('click', async () => {
+      const name = document.getElementById('nameInput').value.trim();
+      const photo = document.getElementById('photoInput').files[0];
       
-      <!-- Score Section -->
-      <div id="scoreSection" class="bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-500/30 p-6 rounded-xl mb-8">
-        <p class="text-lg text-yellow-200 flex flex-wrap items-center gap-4">
-          <span><i class="fas fa-exclamation-triangle mr-2"></i> Unpaid Foods Today: <span id="unpaidCount" class="font-bold text-white">0</span></span>
-          <span>|</span>
-          <span><i class="fas fa-star mr-2"></i> Score: <span id="score" class="font-bold">0</span></span>
-        </p>
-      </div>
+      if (!name) {
+        alert('Please enter your name');
+        return;
+      }
+      if (!photo) {
+        alert('Please select a photo');
+        return;
+      }
 
-      <!-- Spending Graph Section -->
-      <div class="mb-12">
-        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-          <h4 class="text-2xl font-bold text-indigo-200 flex items-center gap-3">
-            <i class="fas fa-chart-line"></i> Spending Overview
-          </h4>
-          <select id="periodSelect" class="bg-slate-700/80 text-white px-6 py-3 rounded-xl border border-slate-600/50 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/50 transition-all duration-200">
-            <option value="day">Today</option>
-            <option value="week">This Week</option>
-            <option value="month">This Month</option>
-            <option value="year">This Year</option>
-          </select>
+      const formData = new FormData();
+      formData.append('email', userEmail);
+      formData.append('name', name);
+      formData.append('photo', photo);
+
+      const btn = document.getElementById('saveProfileBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Saving...';
+
+      try {
+        const res = await fetch('/update-profile', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          localStorage.setItem('messmate_user_name', data.name);
+          localStorage.setItem('messmate_profile_complete', true);
+          localStorage.setItem('messmate_profile_photo', data.profilePhoto);
+          profileComplete = true;
+          profilePhoto = data.profilePhoto;
+          
+          document.getElementById('profileSetupModal').classList.add('hidden');
+          document.getElementById('mainContent').style.display = 'block';
+          location.reload();
+        } else {
+          alert(data.error || 'Failed to save profile');
+        }
+      } catch (err) {
+        alert('Error saving profile');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-check mr-2"></i> Save & Continue';
+      }
+    });
+
+    document.getElementById('welcome').textContent = `Welcome, ${userName || userEmail}`;
+
+    document.getElementById('logout').addEventListener('click', () => {
+      localStorage.clear();
+      window.location.href = '/';
+    });
+
+    // Load meals
+    async function loadMeals() {
+      const res = await fetch('/meals');
+      const meals = await res.json();
+      document.getElementById('meals').innerHTML = meals.map(m => `
+        <div class="bg-slate-800/60 rounded-2xl overflow-hidden border border-slate-700/40 hover:border-indigo-500/60 transition-all">
+          <img src="${m.image}" alt="${m.name}" class="w-full h-56 object-cover">
+          <div class="p-6">
+            <h3 class="text-xl font-bold mb-3">${m.name}</h3>
+            <p class="text-sm text-slate-300 mb-4">${m.description || 'Delicious meal'}</p>
+            <div class="flex justify-between items-center">
+              <span class="text-2xl font-bold text-emerald-400">₹${m.price}</span>
+              <button onclick="bookMeal('${m.name}', ${m.price})" class="bg-gradient-to-r from-emerald-500 to-teal-600 px-6 py-3 rounded-xl font-semibold">
+                Order
+              </button>
+            </div>
+          </div>
         </div>
-        <div class="total-spent bg-slate-700/40 p-6 rounded-xl border border-slate-600/50 mb-6 text-center">
-          <p class="text-2xl font-bold text-emerald-400" id="totalSpent">₹0</p>
-          <p class="text-base text-slate-300">Total spent in selected period</p>
-        </div>
-        <div class="chart-container">
-          <canvas id="spendingChart" height="250"></canvas>
-        </div>
-      </div>
+      `).join('');
+    }
 
-      <!-- Food Items Graph Section -->
-      <div class="mb-12">
-        <h4 class="text-2xl font-bold text-indigo-200 mb-6 flex items-center gap-3">
-          <i class="fas fa-chart-bar"></i> Food Items Ordered
-        </h4>
-        <div class="chart-container">
-          <canvas id="foodChart" height="250"></canvas>
-        </div>
-      </div>
+    window.bookMeal = async (mealName, price) => {
+      if (!profileComplete) {
+        alert('Please complete your profile first');
+        return;
+      }
+      
+      const res = await fetch('/book', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mealName, email: userEmail, price })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('✓ Order placed!');
+        loadOrders();
+      } else {
+        alert(data.error || 'Booking failed');
+      }
+    };
 
-      <!-- Order History -->
-      <h4 class="text-2xl font-bold text-indigo-200 mb-6 flex items-center gap-3">
-        <i class="fas fa-history"></i> Previous Orders
-      </h4>
-      <div id="profileOrders" class="space-y-4 max-h-96 overflow-y-auto"></div>
-    </div>
-  </div>
+    async function loadOrders() {
+      const res = await fetch(`/user/${userEmail}`);
+      const data = await res.json();
+      if (data.success) {
+        const orders = data.orders || [];
+        const todayStr = new Date().toDateString();
+        const todayUnpaid = orders.filter(o => new Date(o.date).toDateString() === todayStr && !o.paid);
+        const todayPaid = orders.filter(o => new Date(o.date).toDateString() === todayStr && o.paid);
 
-  <!-- QR Modal -->
-  <div id="qrModal" class="fixed inset-0 bg-black/60 modal-overlay flex items-center justify-center z-50 hidden">
-    <div class="bg-slate-800/95 backdrop-blur-sm rounded-2xl p-8 max-w-lg w-full mx-4 border border-slate-700/50 shadow-2xl text-center">
-      <h3 class="text-3xl font-bold gradient-text mb-8 flex items-center justify-center gap-3 mx-auto">
-        <i class="fas fa-check-circle text-emerald-400"></i> Payment Successful!
-      </h3>
-      <p class="text-lg text-slate-300 mb-6">Scan QR for Today's Meals</p>
-      <img id="qrCanvas" class="mx-auto mb-6 border-2 border-emerald-500 rounded-xl shadow-lg" alt="QR Code" style="width: 220px; height: 220px;">
-      <div id="modalMealsList" class="mt-6 text-left bg-slate-700/40 p-4 rounded-xl border border-slate-600/50 hidden">
-        <h4 class="font-semibold mb-3 text-emerald-300 flex items-center gap-2">
-          <i class="fas fa-check-circle"></i> Contains:
-        </h4>
-        <ul id="modalMealsItems" class="space-y-2 text-sm"></ul>
-      </div>
-      <button id="closeQR" class="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 px-8 py-3 rounded-xl font-semibold transition-all duration-300 hover:scale-105 shadow-lg">
-        <i class="fas fa-times mr-2"></i> Close
-      </button>
-    </div>
-  </div>
+        let html = '';
+        if (todayUnpaid.length > 0) {
+          const total = todayUnpaid.reduce((s, o) => s + o.price, 0);
+          html += `
+            <div class="mb-6 p-6 bg-indigo-900/50 rounded-2xl">
+              <h4 class="text-xl font-bold mb-3">Pay for Today's Orders</h4>
+              <p class="mb-4">You have ${todayUnpaid.length} unpaid orders (₹${total})</p>
+              <button id="payBtn" class="bg-gradient-to-r from-indigo-500 to-purple-600 px-8 py-3 rounded-xl font-semibold">
+                Pay ₹${total}
+              </button>
+            </div>
+          `;
+        }
 
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="script.js"></script>
+        html += orders.map(o => `
+          <div class="bg-slate-700/40 p-6 rounded-xl mb-4">
+            <div class="flex justify-between">
+              <div>
+                <p class="font-bold text-xl">${o.mealName}</p>
+                <p class="text-sm text-slate-300">${new Date(o.date).toLocaleString()}</p>
+                <span class="text-${o.paid ? 'emerald' : 'red'}-400 text-sm">${o.paid ? 'Paid' : 'Unpaid'}</span>
+              </div>
+              <p class="text-xl font-bold text-emerald-400">₹${o.price}</p>
+            </div>
+          </div>
+        `).join('');
+
+        document.getElementById('orders').innerHTML = html || '<p class="text-center text-slate-400">No orders yet</p>';
+
+        const payBtn = document.getElementById('payBtn');
+        if (payBtn) payBtn.onclick = handlePay;
+
+        // Show token pass if paid today
+        if (todayPaid.length > 0 && todayPaid[0].token) {
+          const tokenRes = await fetch(`/token/${todayPaid[0].token}`);
+          const tokenData = await tokenRes.json();
+          if (tokenData.success && !tokenData.verified) {
+            showTokenPass(tokenData);
+          }
+        }
+      }
+    }
+
+    async function handlePay() {
+      const res = await fetch('/pay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: userEmail })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('✓ Payment successful!');
+        showTokenPass(data);
+        loadOrders();
+      } else {
+        alert(data.error || 'Payment failed');
+      }
+    }
+
+    function showTokenPass(data) {
+      document.getElementById('tokenPassSection').classList.remove('hidden');
+      document.getElementById('tokenUserPhoto').src = data.userPhoto || 'https://via.placeholder.com/120';
+      document.getElementById('tokenUserName').textContent = data.userName;
+      document.getElementById('tokenNumber').textContent = data.token;
+      
+      const mealsList = document.getElementById('tokenMealsList');
+      const mealsItems = document.getElementById('tokenMealsItems');
+      if (data.meals && data.meals.length > 0) {
+        mealsItems.innerHTML = data.meals.map(m => 
+          `<li class="bg-white/5 p-2 rounded">${m.name} × ${m.quantity}</li>`
+        ).join('');
+        mealsList.classList.remove('hidden');
+      }
+    }
+
+    checkProfile();
+    loadMeals();
+    loadOrders();
+  </script>
 </body>
 </html>

@@ -41,9 +41,31 @@
         <h1 class="text-4xl font-bold gradient-text">Producer Dashboard</h1>
         <p id="producer-welcome" class="text-base text-slate-300 mt-2 font-medium"></p>
       </div>
+      <!-- Add this updated header section to your dashboard1.html -->
+<div class="flex items-center justify-between mb-8">
+  <div>
+    <h1 class="text-4xl font-bold gradient-text">Producer Dashboard</h1>
+    <p id="producer-welcome" class="text-base text-slate-300 mt-2 font-medium"></p>
+  </div>
+  <div class="flex items-center gap-4">
+    <button id="scanBtn" class="text-2xl p-4 bg-slate-800/50 hover:bg-slate-700/50 rounded-full transition-all duration-300 hover:scale-110 shadow-lg" title="Scan QR">
+      <i class="fas fa-qrcode"></i>
+    </button>
+    <button onclick="window.location.href='dashboard4.html'" class="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 px-6 py-3 rounded-xl font-semibold transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl">
+      <i class="fas fa-ticket-alt mr-2"></i>Verify Token
+    </button>
+    <button onclick="window.location.href='dashboard3.html'" class="bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 px-6 py-3 rounded-xl font-semibold transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl">
+      <i class="fas fa-cog mr-2"></i>Manage Item
+    </button>
+    <button id="logout" class="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 px-6 py-3 rounded-xl font-semibold transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl">Logout</button>
+  </div>
+</div>
       <div class="flex items-center gap-4">
         <button id="scanBtn" class="text-2xl p-4 bg-slate-800/50 hover:bg-slate-700/50 rounded-full transition-all duration-300 hover:scale-110 shadow-lg" title="Scan QR">
           <i class="fas fa-qrcode"></i>
+        </button>
+        <button onclick="window.location.href='dashboard3.html'" class="bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 px-6 py-3 rounded-xl font-semibold transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl">
+          <i class="fas fa-cog mr-2"></i>Manage Item
         </button>
         <button id="logout" class="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 px-6 py-3 rounded-xl font-semibold transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl">Logout</button>
       </div>
@@ -100,6 +122,7 @@
       </div>
     </section>
 
+    
     <!-- Scanned Orders Verification Section -->
     <section class="mb-12">
       <h2 class="text-3xl font-bold mb-6 text-indigo-200 flex items-center gap-3">
