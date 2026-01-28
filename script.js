@@ -1291,6 +1291,140 @@ style.textContent = `
     animation: slide-in 0.3s ease-out;
   }
 `;
+
+
+// ============================================================================
+// NOTIFICATION DIAGNOSTIC SCRIPT
+// Add this temporarily to your student dashboard to test notifications
+// ============================================================================
+
+console.log('🔍 === NOTIFICATION DIAGNOSTIC STARTING ===');
+
+// Test 1: Check browser support
+console.log('\n📋 Test 1: Browser Support');
+console.log('Service Worker supported:', 'serviceWorker' in navigator);
+console.log('Push Manager supported:', 'PushManager' in window);
+console.log('Notifications supported:', 'Notification' in window);
+
+// Test 2: Check notification permission
+console.log('\n🔔 Test 2: Notification Permission');
+console.log('Current permission:', Notification ? Notification.permission : 'N/A');
+
+// Test 3: Check service worker registration
+console.log('\n📝 Test 3: Service Worker Status');
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then(registrations => {
+    console.log('Registered service workers:', registrations.length);
+    registrations.forEach((reg, index) => {
+      console.log(`  [${index}] Scope: ${reg.scope}`);
+      console.log(`  [${index}] Active: ${!!reg.active}`);
+    });
+    
+    if (registrations.length === 0) {
+      console.warn('⚠️ No service worker registered! This is the problem.');
+      console.log('💡 Solution: Add service worker registration code to script.js');
+    }
+  });
+  
+  // Test 4: Check push subscription
+  console.log('\n📡 Test 4: Push Subscription Status');
+  navigator.serviceWorker.ready.then(registration => {
+    registration.pushManager.getSubscription().then(subscription => {
+      if (subscription) {
+        console.log('✅ Push subscription exists');
+        console.log('Endpoint:', subscription.endpoint);
+        console.log('Keys:', {
+          p256dh: subscription.toJSON().keys.p256dh.substring(0, 20) + '...',
+          auth: subscription.toJSON().keys.auth.substring(0, 20) + '...'
+        });
+      } else {
+        console.warn('⚠️ No push subscription found!');
+        console.log('💡 Solution: Need to call pushManager.subscribe()');
+      }
+    }).catch(err => {
+      console.error('❌ Error getting subscription:', err);
+    });
+  }).catch(err => {
+    console.error('❌ Service worker not ready:', err);
+  });
+} else {
+  console.error('❌ Service workers not supported in this browser');
+}
+
+// Test 5: Check server endpoints
+console.log('\n🌐 Test 5: Server Endpoints');
+
+fetch('/vapid-public-key')
+  .then(res => res.json())
+  .then(data => {
+    console.log('✅ VAPID endpoint working');
+    console.log('Public key:', data.publicKey ? data.publicKey.substring(0, 20) + '...' : 'MISSING!');
+    if (!data.publicKey) {
+      console.error('❌ VAPID public key is missing from server!');
+    }
+  })
+  .catch(err => {
+    console.error('❌ VAPID endpoint failed:', err);
+    console.log('💡 Check if server is running and endpoint exists');
+  });
+
+// Test 6: Check if user is logged in
+console.log('\n👤 Test 6: User Authentication');
+const email = localStorage.getItem('messmate_user_email');
+console.log('User email:', email || 'NOT LOGGED IN');
+if (!email) {
+  console.warn('⚠️ User not logged in - notifications require user email');
+}
+
+// Test 7: Try to request notification permission (commented out - uncomment to test)
+console.log('\n🔔 Test 7: Test Notification Permission Request');
+console.log('To test permission request, run this in console:');
+console.log('Notification.requestPermission().then(perm => console.log("Permission:", perm))');
+
+// Summary
+console.log('\n📊 === DIAGNOSTIC SUMMARY ===');
+setTimeout(() => {
+  const issues = [];
+  
+  if (!('serviceWorker' in navigator)) {
+    issues.push('❌ Browser does not support service workers');
+  }
+  
+  if (!('PushManager' in window)) {
+    issues.push('❌ Browser does not support push notifications');
+  }
+  
+  if (Notification && Notification.permission === 'denied') {
+    issues.push('⚠️ User has denied notification permission');
+  }
+  
+  if (!localStorage.getItem('messmate_user_email')) {
+    issues.push('⚠️ User is not logged in');
+  }
+  
+  if (issues.length === 0) {
+    console.log('✅ All basic checks passed!');
+    console.log('💡 If notifications still not working, check:');
+    console.log('   1. Service worker is registered');
+    console.log('   2. Push subscription is created');
+    console.log('   3. Subscription is saved to server');
+  } else {
+    console.log('⚠️ Issues found:');
+    issues.forEach(issue => console.log('   ' + issue));
+  }
+  
+  console.log('\n🔧 Next Steps:');
+  console.log('1. Replace script.js with the updated version');
+  console.log('2. Reload the page');
+  console.log('3. Accept notification permission when prompted');
+  console.log('4. Check console for "Push subscription saved to server"');
+  console.log('5. Ask producer to send a test notification');
+  
+}, 2000);
+
+console.log('\n✅ Diagnostic complete - check results above');
+
+
 document.head.appendChild(style);
 
 console.log('✅ Push notification registration script loaded');
