@@ -812,4 +812,243 @@ window.removeFromCart = removeFromCart;
 checkProfile();
 loadMeals();
 loadOrders();
-updateCartBadge();
+updateCartBadge();// ============================================================================
+// PUSH NOTIFICATION REGISTRATION FOR STUDENT DASHBOARD
+// Add this code to the END of script.js (student dashboard)
+// ============================================================================
+
+// Check if service workers and push notifications are supported
+if ('serviceWorker' in navigator && 'PushManager' in window) {
+  console.log('✅ Push notifications are supported');
+  initializePushNotifications();
+} else {
+  console.warn('⚠️ Push notifications are not supported in this browser');
+}
+
+async function initializePushNotifications() {
+  try {
+    // Step 1: Register the service worker
+    console.log('📝 Registering service worker...');
+    const registration = await navigator.serviceWorker.register('/service-worker.js', {
+      scope: '/'
+    });
+    
+    console.log('✅ Service worker registered:', registration);
+    
+    // Wait for service worker to be ready
+    await navigator.serviceWorker.ready;
+    console.log('✅ Service worker is ready');
+    
+    // Step 2: Check current notification permission
+    console.log('🔔 Current notification permission:', Notification.permission);
+    
+    if (Notification.permission === 'default') {
+      // Show a friendly prompt before requesting permission
+      showNotificationPrompt();
+    } else if (Notification.permission === 'granted') {
+      // Permission already granted, subscribe immediately
+      await subscribeToPushNotifications(registration);
+    } else {
+      console.log('⚠️ Notification permission was denied');
+    }
+    
+  } catch (error) {
+    console.error('❌ Error initializing push notifications:', error);
+  }
+}
+
+function showNotificationPrompt() {
+  // Create a friendly in-app prompt
+  const promptDiv = document.createElement('div');
+  promptDiv.id = 'notification-prompt';
+  promptDiv.className = 'fixed bottom-4 right-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-6 rounded-2xl shadow-2xl z-50 max-w-md animate-slide-in';
+  promptDiv.innerHTML = `
+    <div class="flex items-start gap-4">
+      <div class="text-3xl">🔔</div>
+      <div class="flex-1">
+        <h3 class="font-bold text-lg mb-2">Stay Updated!</h3>
+        <p class="text-sm mb-4 text-white/90">
+          Enable notifications to receive:
+          <br>• Daily meal reminders
+          <br>• Order confirmations
+          <br>• Payment updates
+        </p>
+        <div class="flex gap-3">
+          <button id="enable-notifications" class="bg-white text-indigo-600 px-4 py-2 rounded-lg font-semibold hover:bg-indigo-50 transition-all">
+            Enable Notifications
+          </button>
+          <button id="dismiss-prompt" class="bg-white/10 px-4 py-2 rounded-lg hover:bg-white/20 transition-all">
+            Maybe Later
+          </button>
+        </div>
+      </div>
+      <button id="close-prompt" class="text-white/80 hover:text-white text-xl">×</button>
+    </div>
+  `;
+  
+  document.body.appendChild(promptDiv);
+  
+  // Add event listeners
+  document.getElementById('enable-notifications').addEventListener('click', async () => {
+    promptDiv.remove();
+    await requestNotificationPermission();
+  });
+  
+  document.getElementById('dismiss-prompt').addEventListener('click', () => {
+    promptDiv.remove();
+    // Ask again in 24 hours
+    localStorage.setItem('notification-prompt-dismissed', Date.now());
+  });
+  
+  document.getElementById('close-prompt').addEventListener('click', () => {
+    promptDiv.remove();
+  });
+}
+
+async function requestNotificationPermission() {
+  try {
+    console.log('🔔 Requesting notification permission...');
+    const permission = await Notification.requestPermission();
+    
+    console.log('🔔 Notification permission result:', permission);
+    
+    if (permission === 'granted') {
+      console.log('✅ Notification permission granted!');
+      showToast('Notifications enabled! You\'ll receive meal reminders.', 'success');
+      
+      // Subscribe to push notifications
+      const registration = await navigator.serviceWorker.ready;
+      await subscribeToPushNotifications(registration);
+    } else {
+      console.log('⚠️ Notification permission denied');
+      showToast('Notifications disabled. You can enable them later in settings.', 'info');
+    }
+  } catch (error) {
+    console.error('❌ Error requesting notification permission:', error);
+    showToast('Error enabling notifications. Please try again.', 'error');
+  }
+}
+
+async function subscribeToPushNotifications(registration) {
+  try {
+    console.log('📡 Subscribing to push notifications...');
+    
+    // Get the VAPID public key from server
+    const vapidResponse = await fetch('/vapid-public-key');
+    const { publicKey } = await vapidResponse.json();
+    
+    console.log('🔑 Got VAPID public key');
+    
+    // Check if already subscribed
+    let subscription = await registration.pushManager.getSubscription();
+    
+    if (subscription) {
+      console.log('ℹ️ Already subscribed, updating subscription...');
+      // Unsubscribe first to get a fresh subscription
+      await subscription.unsubscribe();
+    }
+    
+    // Subscribe to push notifications
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey)
+    });
+    
+    console.log('✅ Push subscription created:', subscription.endpoint);
+    
+    // Send subscription to server
+    const response = await fetch('/subscribe', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        email: userEmail,
+        subscription: subscription.toJSON()
+      })
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      console.log('✅ Subscription saved to server');
+      localStorage.setItem('push-subscription-active', 'true');
+    } else {
+      console.error('❌ Failed to save subscription:', result.error);
+    }
+    
+  } catch (error) {
+    console.error('❌ Error subscribing to push notifications:', error);
+    if (error.name === 'NotAllowedError') {
+      console.log('⚠️ Push notification permission was denied');
+    }
+  }
+}
+
+// Utility function to convert VAPID key
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding)
+    .replace(/\-/g, '+')
+    .replace(/_/g, '/');
+  
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+// Function to check and resubscribe if needed
+async function checkNotificationStatus() {
+  try {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      return;
+    }
+    
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    
+    if (!subscription && Notification.permission === 'granted') {
+      console.log('⚠️ Notification permission granted but not subscribed, resubscribing...');
+      await subscribeToPushNotifications(registration);
+    } else if (subscription) {
+      console.log('✅ Push subscription is active');
+    }
+  } catch (error) {
+    console.error('❌ Error checking notification status:', error);
+  }
+}
+
+// Check notification status on page load
+window.addEventListener('load', () => {
+  // Wait a bit for the user email to be set
+  setTimeout(() => {
+    if (userEmail) {
+      checkNotificationStatus();
+    }
+  }, 1000);
+});
+
+// Add CSS for the animation
+const style = document.createElement('style');
+style.textContent = `
+  @keyframes slide-in {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+  .animate-slide-in {
+    animation: slide-in 0.3s ease-out;
+  }
+`;
+document.head.appendChild(style);
+
+console.log('✅ Push notification registration script loaded');
