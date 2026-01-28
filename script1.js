@@ -1,4 +1,4 @@
-// script1.js - Enhanced Producer Dashboard with Notification Controls
+// script1.js - Producer Dashboard with Smart Targeting Display
 const userEmail = localStorage.getItem('messmate_user_email');
 const userRole = localStorage.getItem('messmate_user_role') || 'producer';
 const userName = localStorage.getItem('messmate_user_name') || '';
@@ -13,7 +13,13 @@ let notificationEventSource = null;
 let notificationStats = {
   subscribedStudents: 0,
   totalStudents: 0,
-  todayNotifications: 0
+  todayNotifications: 0,
+  targeting: {
+    noOrderToday: 0,
+    notVerified: 0,
+    alreadyVerified: 0,
+    willNotify: 0
+  }
 };
 
 document.getElementById('producer-welcome').textContent = `Logged in as: ${userName || userEmail}`;
@@ -37,10 +43,17 @@ async function loadNotificationStats() {
       notificationStats = {
         subscribedStudents: data.stats.subscribedStudents,
         totalStudents: data.stats.totalStudents,
-        todayNotifications: data.stats.notificationsToday.successful
+        todayNotifications: data.stats.notificationsToday.successful,
+        targeting: data.stats.targeting || {
+          noOrderToday: 0,
+          notVerified: 0,
+          alreadyVerified: 0,
+          willNotify: 0
+        }
       };
       
       updateNotificationBadge();
+      updateNotificationPanel();
     }
   } catch (err) {
     console.error('Error loading notification stats:', err);
@@ -50,8 +63,30 @@ async function loadNotificationStats() {
 // Update notification badge
 function updateNotificationBadge() {
   const badge = document.getElementById('notificationDot');
-  if (notificationStats.todayNotifications > 0) {
+  const willNotify = notificationStats.targeting.willNotify;
+  
+  if (willNotify > 0) {
     badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
+}
+
+// Update notification panel with targeting info
+function updateNotificationPanel() {
+  const sendBtn = document.getElementById('sendReminderBtn');
+  const willNotify = notificationStats.targeting.willNotify;
+  
+  if (willNotify === 0) {
+    sendBtn.innerHTML = '<i class="fas fa-check-circle mr-2"></i>All Verified!';
+    sendBtn.disabled = true;
+    sendBtn.classList.remove('bg-orange-600', 'hover:bg-orange-700');
+    sendBtn.classList.add('bg-emerald-600');
+  } else {
+    sendBtn.innerHTML = `<i class="fas fa-paper-plane mr-2"></i>Send to ${willNotify} Students`;
+    sendBtn.disabled = false;
+    sendBtn.classList.remove('bg-emerald-600');
+    sendBtn.classList.add('bg-orange-600', 'hover:bg-orange-700');
   }
 }
 
@@ -86,10 +121,14 @@ function handleNotificationEvent(data) {
     case 'reminder_sent':
     case 'scheduled_reminder_sent':
       playNotificationSound();
-      showNotificationToast(
-        `📢 ${data.results?.successful || 0} students notified!`,
-        'success'
-      );
+      
+      const breakdown = data.results?.breakdown || {};
+      const message = `📢 ${data.results?.successful || 0} students notified!\n` +
+                     `• No orders: ${breakdown.noOrder || 0}\n` +
+                     `• Not verified: ${breakdown.notVerified || 0}\n` +
+                     `• Skipped (verified): ${breakdown.alreadyVerified || 0}`;
+      
+      showNotificationToast(message, 'success');
       addNotificationToPanel(data);
       loadNotificationStats();
       break;
@@ -98,7 +137,22 @@ function handleNotificationEvent(data) {
 
 // Send reminder to all students
 document.getElementById('sendReminderBtn').addEventListener('click', async () => {
-  if (!confirm('Send meal reminder to all students now?')) {
+  const willNotify = notificationStats.targeting.willNotify;
+  
+  if (willNotify === 0) {
+    showNotificationToast('✅ All students have ordered and verified!', 'success');
+    return;
+  }
+  
+  const noOrder = notificationStats.targeting.noOrderToday;
+  const notVerified = notificationStats.targeting.notVerified;
+  
+  const confirmMsg = `Send reminders to ${willNotify} students?\n\n` +
+                     `• ${noOrder} haven't ordered today\n` +
+                     `• ${notVerified} haven't verified their token\n\n` +
+                     `Students who already verified will NOT be notified.`;
+  
+  if (!confirm(confirmMsg)) {
     return;
   }
 
@@ -119,11 +173,14 @@ document.getElementById('sendReminderBtn').addEventListener('click', async () =>
     const data = await res.json();
 
     if (data.success) {
+      const breakdown = data.results?.breakdown || {};
       showNotificationToast(
-        `✅ Reminders sent to ${data.results.successful}/${data.results.total} students!`,
+        `✅ Sent to ${data.results.successful}/${data.results.total} students!\n` +
+        `Skipped ${data.results.skipped} students who already verified.`,
         'success'
       );
       loadRecentNotifications();
+      loadNotificationStats();
     } else {
       showNotificationToast('❌ Failed to send reminders', 'error');
     }
@@ -132,7 +189,7 @@ document.getElementById('sendReminderBtn').addEventListener('click', async () =>
     showNotificationToast('❌ Error sending reminders', 'error');
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Send Reminders';
+    loadNotificationStats();
   }
 });
 
@@ -154,12 +211,38 @@ async function loadRecentNotifications() {
 function displayNotifications(notifications) {
   const list = document.getElementById('notificationList');
   
+  // Add targeting summary at top
+  const targeting = notificationStats.targeting;
+  const summaryHtml = `
+    <div class="bg-gradient-to-r from-indigo-600/20 to-purple-600/20 p-4 rounded-xl border border-indigo-500/30 mb-4">
+      <h4 class="text-sm font-bold text-indigo-200 mb-3">📊 Current Status</h4>
+      <div class="grid grid-cols-2 gap-3 text-xs">
+        <div class="bg-slate-700/40 p-3 rounded-lg">
+          <p class="text-slate-400 mb-1">No Orders Today</p>
+          <p class="text-2xl font-bold text-orange-400">${targeting.noOrderToday}</p>
+        </div>
+        <div class="bg-slate-700/40 p-3 rounded-lg">
+          <p class="text-slate-400 mb-1">Not Verified</p>
+          <p class="text-2xl font-bold text-yellow-400">${targeting.notVerified}</p>
+        </div>
+        <div class="bg-slate-700/40 p-3 rounded-lg">
+          <p class="text-slate-400 mb-1">Already Verified</p>
+          <p class="text-2xl font-bold text-emerald-400">${targeting.alreadyVerified}</p>
+        </div>
+        <div class="bg-slate-700/40 p-3 rounded-lg">
+          <p class="text-slate-400 mb-1">Will Notify</p>
+          <p class="text-2xl font-bold text-indigo-400">${targeting.willNotify}</p>
+        </div>
+      </div>
+    </div>
+  `;
+  
   if (notifications.length === 0) {
-    list.innerHTML = '<p class="text-slate-400 text-center py-4">No notifications sent today</p>';
+    list.innerHTML = summaryHtml + '<p class="text-slate-400 text-center py-4">No notifications sent today</p>';
     return;
   }
 
-  list.innerHTML = notifications.map(n => {
+  const notificationsHtml = notifications.map(n => {
     const time = new Date(n.sentAt).toLocaleTimeString('en-IN', {
       hour: '2-digit',
       minute: '2-digit'
@@ -171,6 +254,12 @@ function displayNotifications(notifications) {
     
     const statusColor = n.success ? 'text-emerald-400' : 'text-red-400';
     const statusIcon = n.success ? 'fa-check-circle' : 'fa-exclamation-circle';
+    
+    const reasonBadge = n.reason === 'no_order_today' ? 
+      '<span class="text-xs bg-orange-600/30 text-orange-300 px-2 py-1 rounded">No Order</span>' :
+      n.reason === 'not_verified' ? 
+      '<span class="text-xs bg-yellow-600/30 text-yellow-300 px-2 py-1 rounded">Not Verified</span>' :
+      '';
 
     return `
       <div class="bg-slate-700/40 p-4 rounded-xl border border-slate-600/30 hover:border-indigo-500/50 transition-all">
@@ -181,12 +270,13 @@ function displayNotifications(notifications) {
               <p class="font-semibold text-white text-sm">${n.title}</p>
               <span class="text-xs text-slate-400">${time}</span>
             </div>
-            <p class="text-slate-300 text-xs mb-2">${n.message}</p>
-            <div class="flex items-center gap-2">
+            <p class="text-slate-300 text-xs mb-2">${n.message.substring(0, 80)}...</p>
+            <div class="flex items-center gap-2 flex-wrap">
               <span class="${statusColor} text-xs flex items-center gap-1">
                 <i class="fas ${statusIcon}"></i>
                 ${n.success ? 'Delivered' : 'Failed'}
               </span>
+              ${reasonBadge}
               <span class="text-slate-400 text-xs">• ${n.userEmail}</span>
             </div>
           </div>
@@ -194,6 +284,8 @@ function displayNotifications(notifications) {
       </div>
     `;
   }).join('');
+  
+  list.innerHTML = summaryHtml + notificationsHtml;
 }
 
 // Add notification to panel (real-time)
@@ -204,6 +296,15 @@ function addNotificationToPanel(data) {
     hour: '2-digit',
     minute: '2-digit'
   });
+
+  const breakdown = data.results?.breakdown || {};
+  const detailsHtml = `
+    <div class="text-xs mt-2 space-y-1">
+      <p class="text-emerald-400">✓ ${breakdown.noOrder || 0} no orders</p>
+      <p class="text-yellow-400">✓ ${breakdown.notVerified || 0} not verified</p>
+      <p class="text-slate-400">⊘ ${breakdown.alreadyVerified || 0} skipped (verified)</p>
+    </div>
+  `;
 
   const newNotification = document.createElement('div');
   newNotification.className = 'bg-slate-700/40 p-4 rounded-xl border border-emerald-500/50 animate-slide-in';
@@ -218,28 +319,23 @@ function addNotificationToPanel(data) {
           <span class="text-xs text-slate-400">${time}</span>
         </div>
         <p class="text-slate-300 text-xs mb-2">
-          Sent to ${data.results?.successful || 0} students
+          Sent to ${data.results?.successful || 0} students (${data.results?.skipped || 0} skipped)
         </p>
-        <div class="flex items-center gap-2">
-          <span class="text-emerald-400 text-xs flex items-center gap-1">
-            <i class="fas fa-check-circle"></i>
-            Delivered
-          </span>
-        </div>
+        ${detailsHtml}
       </div>
     </div>
   `;
 
-  // Remove "no notifications" message if it exists
-  const noNotifMsg = list.querySelector('p.text-slate-400');
-  if (noNotifMsg) {
-    list.innerHTML = '';
+  // Find the summary div and insert after it
+  const summary = list.querySelector('.bg-gradient-to-r');
+  if (summary && summary.nextSibling) {
+    list.insertBefore(newNotification, summary.nextSibling);
+  } else {
+    list.appendChild(newNotification);
   }
-
-  list.insertBefore(newNotification, list.firstChild);
   
-  // Keep only last 10
-  while (list.children.length > 10) {
+  // Keep only last 10 notifications (+ summary)
+  while (list.children.length > 11) {
     list.removeChild(list.lastChild);
   }
 }
@@ -251,6 +347,7 @@ document.getElementById('notificationBell').addEventListener('click', () => {
   
   if (!panel.classList.contains('hidden')) {
     loadRecentNotifications();
+    loadNotificationStats();
     document.getElementById('notificationBell').classList.add('bell-ringing');
     setTimeout(() => {
       document.getElementById('notificationBell').classList.remove('bell-ringing');
@@ -283,10 +380,10 @@ function showNotificationToast(message, type = 'info') {
   const toast = document.createElement('div');
   const bgColor = type === 'success' ? 'bg-emerald-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
   
-  toast.className = `fixed top-20 right-4 ${bgColor} text-white px-6 py-4 rounded-xl shadow-2xl z-50 flex items-center gap-3 animate-slide-in`;
+  toast.className = `fixed top-20 right-4 ${bgColor} text-white px-6 py-4 rounded-xl shadow-2xl z-50 flex items-center gap-3 animate-slide-in max-w-md`;
   toast.innerHTML = `
     <i class="fas ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'}"></i>
-    <span>${message}</span>
+    <span class="whitespace-pre-line text-sm">${message}</span>
   `;
   
   document.body.appendChild(toast);
@@ -295,7 +392,7 @@ function showNotificationToast(message, type = 'info') {
     toast.style.opacity = '0';
     toast.style.transform = 'translateX(100%)';
     setTimeout(() => toast.remove(), 300);
-  }, 4000);
+  }, 5000);
 }
 
 // ==================== ORIGINAL FUNCTIONALITY ====================
@@ -444,6 +541,7 @@ async function showVerificationModal(data) {
         showNotificationToast('✅ Order verified successfully!', 'success');
         document.getElementById('verifyModal').classList.add('hidden');
         loadStats();
+        loadNotificationStats(); // Refresh targeting stats
       } else {
         showNotificationToast('❌ Verification failed', 'error');
       }
@@ -530,9 +628,14 @@ window.addEventListener('beforeunload', () => {
   stopScanner();
 });
 
+// Refresh targeting stats periodically
+setInterval(() => {
+  loadNotificationStats();
+}, 30000); // Every 30 seconds
+
 // Initialize
 loadStats();
 connectToRatingsSSE();
 initNotificationSystem();
 
-console.log('✅ Producer dashboard with notifications loaded');
+console.log('✅ Producer dashboard with smart targeting loaded');
