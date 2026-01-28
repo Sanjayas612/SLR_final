@@ -1,4 +1,4 @@
-// server.js - Enhanced Push Notifications with Producer Control & 10 AM Reminders
+// server.js - Enhanced Push Notifications with Smart Targeting
 const express = require("express");
 require("dotenv").config();
 const mongoose = require("mongoose");
@@ -183,7 +183,8 @@ const notificationLogSchema = new mongoose.Schema({
   message: String,
   sentAt: { type: Date, default: Date.now },
   success: Boolean,
-  error: String
+  error: String,
+  reason: String // Why this user received the notification
 });
 
 const NotificationLog = mongoose.model("NotificationLog", notificationLogSchema);
@@ -191,6 +192,65 @@ const NotificationLog = mongoose.model("NotificationLog", notificationLogSchema)
 // SSE connections
 let sseClients = [];
 let producerSSEClients = [];
+
+// ==================== SMART TARGETING FUNCTIONS ====================
+
+// Get students who need notifications (haven't ordered or haven't verified)
+async function getTargetedStudents() {
+  try {
+    const todayStr = new Date().toDateString();
+    const allStudents = await User.find({ role: 'student', pushSubscription: { $ne: null } });
+    
+    const targeted = {
+      noOrder: [],           // Students who haven't ordered today
+      notVerified: [],       // Students who ordered but haven't verified
+      allGood: []            // Students who ordered and verified (skip these)
+    };
+
+    for (const student of allStudents) {
+      // Check if student has ordered today
+      const todayOrders = student.orders.filter(o => 
+        new Date(o.date).toDateString() === todayStr
+      );
+
+      if (todayOrders.length === 0) {
+        // No orders today - SEND NOTIFICATION
+        targeted.noOrder.push({
+          email: student.email,
+          name: student.name,
+          reason: 'no_order_today'
+        });
+      } else {
+        // Has orders - check if verified
+        const hasVerified = student.verifiedToday && 
+                          student.verifiedToday.date === todayStr && 
+                          student.verifiedToday.verified;
+
+        if (!hasVerified) {
+          // Ordered but not verified - SEND NOTIFICATION
+          targeted.notVerified.push({
+            email: student.email,
+            name: student.name,
+            reason: 'not_verified',
+            orderCount: todayOrders.length
+          });
+        } else {
+          // Ordered and verified - SKIP
+          targeted.allGood.push({
+            email: student.email,
+            name: student.name,
+            reason: 'already_verified'
+          });
+        }
+      }
+    }
+
+    return targeted;
+  } catch (err) {
+    console.error('Error getting targeted students:', err);
+    return { noOrder: [], notVerified: [], allGood: [] };
+  }
+}
 
 // ==================== PUSH NOTIFICATION FUNCTIONS ====================
 
@@ -250,7 +310,8 @@ async function sendPushNotification(userEmail, payload) {
       type: payload.type || 'order_update',
       title: payload.title,
       message: payload.body,
-      success: true
+      success: true,
+      reason: payload.reason || 'manual'
     }).save();
 
     // Update last notification time
@@ -269,7 +330,8 @@ async function sendPushNotification(userEmail, payload) {
       title: payload.title,
       message: payload.body,
       success: false,
-      error: err.message
+      error: err.message,
+      reason: payload.reason || 'manual'
     }).save();
 
     // If subscription is invalid, remove it
@@ -286,25 +348,49 @@ async function sendPushNotification(userEmail, payload) {
   }
 }
 
-// Send bulk notifications to all students
-async function sendBulkNotifications(payload) {
+// Send targeted notifications (only to students who need them)
+async function sendTargetedNotifications(payload) {
   try {
-    const students = await User.find({ 
-      role: 'student',
-      pushSubscription: { $ne: null }
-    });
+    const targeted = await getTargetedStudents();
+    
+    // Combine students who need notifications
+    const studentsToNotify = [
+      ...targeted.noOrder,
+      ...targeted.notVerified
+    ];
 
-    console.log(`📢 Sending bulk notification to ${students.length} students...`);
+    console.log(`📢 Targeted Notification Summary:`);
+    console.log(`   • No orders today: ${targeted.noOrder.length} students`);
+    console.log(`   • Not verified: ${targeted.notVerified.length} students`);
+    console.log(`   • Already verified (skipped): ${targeted.allGood.length} students`);
+    console.log(`   • TOTAL TO NOTIFY: ${studentsToNotify.length} students`);
     
     const results = {
-      total: students.length,
+      total: studentsToNotify.length,
       successful: 0,
       failed: 0,
+      skipped: targeted.allGood.length,
+      breakdown: {
+        noOrder: targeted.noOrder.length,
+        notVerified: targeted.notVerified.length,
+        alreadyVerified: targeted.allGood.length
+      },
       errors: []
     };
 
-    for (const student of students) {
-      const result = await sendPushNotification(student.email, payload);
+    for (const student of studentsToNotify) {
+      // Customize message based on reason
+      let customPayload = { ...payload };
+      
+      if (student.reason === 'no_order_today') {
+        customPayload.body = `⏰ Good Morning! You haven't ordered meals for today yet. Don't miss out on delicious food! 🍽️`;
+      } else if (student.reason === 'not_verified') {
+        customPayload.body = `⚠️ You have ${student.orderCount} order(s) today that need verification. Please visit the mess to verify your token! 🎫`;
+      }
+      
+      customPayload.reason = student.reason;
+      
+      const result = await sendPushNotification(student.email, customPayload);
       if (result.success) {
         results.successful++;
       } else {
@@ -316,20 +402,20 @@ async function sendBulkNotifications(payload) {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    console.log(`✅ Bulk notification complete: ${results.successful}/${results.total} successful`);
+    console.log(`✅ Targeted notification complete: ${results.successful}/${results.total} successful (${results.skipped} skipped)`);
     return results;
   } catch (err) {
-    console.error('❌ Bulk notification error:', err);
+    console.error('❌ Targeted notification error:', err);
     return { success: false, error: err.message };
   }
 }
 
 // ==================== PRODUCER NOTIFICATION ENDPOINTS ====================
 
-// Send reminder to all students (Producer-triggered)
+// Send reminder to targeted students (Producer-triggered)
 app.post('/producer/send-reminders', async (req, res) => {
   try {
-    const { producerEmail, message } = req.body;
+    const { producerEmail, message, targetType } = req.body;
     
     // Verify producer
     const producer = await User.findOne({ email: producerEmail, role: 'producer' });
@@ -337,21 +423,10 @@ app.post('/producer/send-reminders', async (req, res) => {
       return res.status(403).json({ success: false, error: 'Unauthorized: Producer only' });
     }
 
-    // Get unpaid orders count
-    const students = await User.find({ role: 'student' });
-    const todayStr = new Date().toDateString();
-    let totalUnpaid = 0;
-    
-    students.forEach(student => {
-      const unpaidToday = student.orders.filter(o => 
-        new Date(o.date).toDateString() === todayStr && !o.paid
-      );
-      totalUnpaid += unpaidToday.length;
-    });
+    // Get targeted students
+    const targeted = await getTargetedStudents();
 
-    // Custom message or default
-    const notificationBody = message || 
-      `⏰ Meal Reminder!\n\n${totalUnpaid > 0 ? `You have ${totalUnpaid} unpaid orders. ` : ''}Don't forget to order your meals for today! Check out our delicious menu. 🍽️`;
+    let notificationBody = message || '⏰ Meal Reminder! Don\'t forget to order your meals for today! 🍽️';
 
     const payload = {
       title: '🍽️ MessMate - Meal Reminder',
@@ -365,7 +440,7 @@ app.post('/producer/send-reminders', async (req, res) => {
       }
     };
 
-    const results = await sendBulkNotifications(payload);
+    const results = await sendTargetedNotifications(payload);
 
     // Notify producer clients
     broadcastToProducers({
@@ -376,7 +451,7 @@ app.post('/producer/send-reminders', async (req, res) => {
 
     res.json({ 
       success: true, 
-      message: 'Reminders sent successfully',
+      message: 'Targeted reminders sent successfully',
       results 
     });
   } catch (err) {
@@ -405,6 +480,9 @@ app.get('/producer/notification-stats', async (req, res) => {
       }
     ]);
 
+    // Get targeted students info
+    const targeted = await getTargetedStudents();
+
     const totalStudents = await User.countDocuments({ role: 'student' });
     const subscribedStudents = await User.countDocuments({ 
       role: 'student',
@@ -424,7 +502,13 @@ app.get('/producer/notification-stats', async (req, res) => {
           failed,
           total: successful + failed
         },
-        subscriptionRate: ((subscribedStudents / totalStudents) * 100).toFixed(1)
+        subscriptionRate: ((subscribedStudents / totalStudents) * 100).toFixed(1),
+        targeting: {
+          noOrderToday: targeted.noOrder.length,
+          notVerified: targeted.notVerified.length,
+          alreadyVerified: targeted.allGood.length,
+          willNotify: targeted.noOrder.length + targeted.notVerified.length
+        }
       }
     });
   } catch (err) {
@@ -457,34 +541,19 @@ app.get('/producer/recent-notifications', async (req, res) => {
 
 // Daily reminder at 10 AM (Monday to Saturday) - IST Time
 cron.schedule('0 10 * * 1-6', async () => {
-  console.log('⏰ Running scheduled 10 AM meal reminder...');
+  console.log('⏰ Running scheduled 10 AM meal reminder (TARGETED)...');
   
   try {
-    // Get all students with unpaid orders
-    const students = await User.find({ role: 'student' });
-    const todayStr = new Date().toDateString();
+    const targeted = await getTargetedStudents();
     
-    let studentsWithUnpaidOrders = [];
-    let totalUnpaid = 0;
-    
-    students.forEach(student => {
-      const unpaidToday = student.orders.filter(o => 
-        new Date(o.date).toDateString() === todayStr && !o.paid
-      );
-      
-      if (unpaidToday.length > 0) {
-        studentsWithUnpaidOrders.push({
-          email: student.email,
-          unpaidCount: unpaidToday.length
-        });
-        totalUnpaid += unpaidToday.length;
-      }
-    });
+    console.log(`📊 10 AM Reminder Targeting:`);
+    console.log(`   • Students with no orders: ${targeted.noOrder.length}`);
+    console.log(`   • Students not verified: ${targeted.notVerified.length}`);
+    console.log(`   • Students already verified (skip): ${targeted.allGood.length}`);
 
-    // Send general reminder to all students
     const payload = {
       title: '🌅 Good Morning! Time for Breakfast',
-      body: `⏰ It's 10 AM! Don't forget to order your meals for today. ${totalUnpaid > 0 ? `${totalUnpaid} orders are awaiting payment. ` : ''}Check out today's special menu! 🍽️`,
+      body: '⏰ It\'s 10 AM! Don\'t forget to check your meal status. 🍽️',
       type: 'daily_reminder',
       icon: '/icon-192x192.png',
       badge: '/badge-72x72.png',
@@ -495,16 +564,15 @@ cron.schedule('0 10 * * 1-6', async () => {
       }
     };
 
-    const results = await sendBulkNotifications(payload);
+    const results = await sendTargetedNotifications(payload);
     
-    console.log(`✅ 10 AM reminder sent: ${results.successful}/${results.total} successful`);
+    console.log(`✅ 10 AM targeted reminder complete: ${results.successful}/${results.total} sent (${results.skipped} skipped)`);
     
     // Notify producers about the reminder
     broadcastToProducers({
       type: 'scheduled_reminder_sent',
       time: '10:00 AM',
       results,
-      unpaidOrders: totalUnpaid,
       timestamp: new Date().toISOString()
     });
 
@@ -515,40 +583,49 @@ cron.schedule('0 10 * * 1-6', async () => {
   timezone: "Asia/Kolkata"
 });
 
-// Payment reminder - 6 PM (for unpaid orders)
+// Payment reminder - 6 PM (for students with unverified orders)
 cron.schedule('0 18 * * 1-6', async () => {
-  console.log('⏰ Running 6 PM payment reminder...');
+  console.log('⏰ Running 6 PM verification reminder...');
   
   try {
-    const students = await User.find({ role: 'student' });
     const todayStr = new Date().toDateString();
+    const students = await User.find({ role: 'student', pushSubscription: { $ne: null } });
+    
+    let notificationsSent = 0;
     
     for (const student of students) {
-      const unpaidToday = student.orders.filter(o => 
-        new Date(o.date).toDateString() === todayStr && !o.paid
+      // Check if student has orders but hasn't verified
+      const todayOrders = student.orders.filter(o => 
+        new Date(o.date).toDateString() === todayStr && o.paid
       );
       
-      if (unpaidToday.length > 0 && student.pushSubscription) {
-        const totalAmount = unpaidToday.reduce((sum, order) => sum + order.price, 0);
+      const hasVerified = student.verifiedToday && 
+                        student.verifiedToday.date === todayStr && 
+                        student.verifiedToday.verified;
+      
+      if (todayOrders.length > 0 && !hasVerified && student.pushSubscription) {
+        const totalAmount = todayOrders.reduce((sum, order) => sum + order.price, 0);
         
         await sendPushNotification(student.email, {
-          title: '💰 Payment Reminder',
-          body: `You have ${unpaidToday.length} unpaid orders (₹${totalAmount}). Please complete payment to receive your meals tomorrow. 🍽️`,
+          title: '⚠️ Verification Reminder',
+          body: `You have ${todayOrders.length} order(s) today (₹${totalAmount}) that need verification. Please visit the mess to verify your token! 🎫`,
           type: 'payment_reminder',
+          reason: 'not_verified_6pm',
           data: {
             url: '/dashboard',
-            action: 'pay_orders'
+            action: 'verify_orders'
           }
         });
         
+        notificationsSent++;
         // Small delay between notifications
         await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
     
-    console.log('✅ Payment reminders sent');
+    console.log(`✅ 6 PM verification reminders sent to ${notificationsSent} students`);
   } catch (err) {
-    console.error('❌ Payment reminder error:', err);
+    console.error('❌ 6 PM reminder error:', err);
   }
 }, {
   timezone: "Asia/Kolkata"
@@ -922,6 +999,7 @@ app.post("/checkout", async (req, res) => {
       title: '✅ Order Confirmed!',
       body: `Your order has been placed successfully. Total: ₹${totalAmount}. Token #${newToken}`,
       type: 'order_update',
+      reason: 'order_placed',
       data: {
         url: '/dashboard',
         token: newToken
@@ -995,6 +1073,7 @@ app.post("/verify-token-payment", async (req, res) => {
         title: '🎉 Payment Verified!',
         body: 'Your payment has been verified. Enjoy your meal!',
         type: 'order_update',
+        reason: 'payment_verified',
         data: { url: '/dashboard' }
       });
     }
@@ -1061,6 +1140,7 @@ app.post("/verify-qr", async (req, res) => {
       title: '🎉 Order Verified!',
       body: 'Your meal order has been verified. Enjoy your food!',
       type: 'order_update',
+      reason: 'qr_verified',
       data: { url: '/dashboard' }
     });
 
@@ -1272,8 +1352,9 @@ app.listen(PORT, () => {
   console.log("📡 MongoDB connection active");
   console.log("☁️ Cloudinary configured");
   console.log("🔐 Google OAuth configured");
-  console.log("🔔 Push notifications enabled");
+  console.log("🔔 Push notifications enabled with SMART TARGETING");
   console.log("⏰ Daily reminders scheduled:");
-  console.log("   - 10:00 AM: Meal reminder (Mon-Sat)");
-  console.log("   - 6:00 PM: Payment reminder (Mon-Sat)");
+  console.log("   - 10:00 AM: Meal reminder (ONLY students who haven't ordered or verified)");
+  console.log("   - 6:00 PM: Verification reminder (ONLY students with unverified orders)");
+  console.log("🎯 Targeting: Notifications sent ONLY to students who need them!");
 });
