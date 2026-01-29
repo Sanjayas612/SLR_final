@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
   <title>Producer Dashboard - MessMate</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <style>
     * {
@@ -26,10 +25,6 @@
       transform: translateY(-4px);
       box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
     }
-    
-    #reader { width: 100%; max-width: 400px; margin: 0 auto; }
-    #scanner-modal { z-index: 1000; }
-    .scan-result { animation: slideIn 0.5s ease-out; }
     
     .gradient-text {
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -179,10 +174,6 @@
           </div>
         </div>
 
-        <button id="scanBtn" class="text-lg sm:text-xl md:text-2xl p-2 sm:p-3 md:p-4 bg-slate-800/50 hover:bg-slate-700/50 rounded-full transition-all duration-300 hover:scale-110 shadow-lg" title="Scan QR">
-          <i class="fas fa-qrcode"></i>
-        </button>
-        
         <button onclick="window.location.href='dashboard3.html'" class="bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 px-3 sm:px-4 md:px-6 py-2 sm:py-3 rounded-xl font-semibold transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl text-xs sm:text-sm md:text-base">
           <i class="fas fa-cog mr-1 sm:mr-2"></i><span class="hidden xs:inline">Manage</span>
         </button>
@@ -394,22 +385,6 @@
       </div>
     </section>
 
-    <!-- Pending Verifications Section -->
-    <section class="mb-8 sm:mb-12">
-      <h2 class="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6 text-indigo-200 flex items-center gap-2 sm:gap-3">
-        <i class="fas fa-clipboard-list"></i> <span class="text-xl sm:text-3xl">Pending Verifications</span>
-      </h2>
-      <div id="pendingVerifications" class="bg-slate-800/40 backdrop-blur-sm p-4 sm:p-6 md:p-8 rounded-2xl border border-slate-700/50 space-y-4 sm:space-y-6 min-h-[150px] sm:min-h-[200px] shadow-xl">
-        <div class="text-slate-400 text-center py-8 sm:py-12 flex flex-col sm:flex-row items-center justify-center gap-3">
-          <i class="fas fa-qrcode text-2xl sm:text-3xl opacity-50"></i>
-          <div>
-            <p class="text-base sm:text-lg">Scan a QR to start verification.</p>
-            <p class="text-xs sm:text-sm mt-1">Ready to process student orders</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
     <!-- Live Updates Section -->
     <section class="mb-8 sm:mb-12">
       <h2 class="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6 text-indigo-200 flex items-center gap-2 sm:gap-3">
@@ -419,45 +394,6 @@
     </section>
   </div>
 
-  <!-- Scanner Modal -->
-  <div id="scannerModal" class="fixed inset-0 bg-black/80 modal-overlay flex items-center justify-center z-50 hidden p-2 sm:p-4">
-    <div class="bg-slate-800/95 backdrop-blur-sm rounded-2xl p-4 sm:p-6 md:p-8 max-w-lg w-full mx-4 border border-slate-700/50 shadow-2xl">
-      <div class="flex justify-between items-center mb-4 sm:mb-6">
-        <h3 class="text-xl sm:text-2xl font-bold gradient-text flex items-center gap-2 sm:gap-3">
-          <i class="fas fa-qrcode"></i> QR Scanner
-        </h3>
-        <button id="closeScanner" class="text-3xl hover:text-red-400 transition-colors duration-200">×</button>
-      </div>
-      <div id="reader" class="mb-4"></div>
-      <p class="text-sm sm:text-base text-slate-300 text-center flex items-center justify-center gap-2">
-        <i class="fas fa-mobile-alt mr-2"></i> Scan student's QR code
-      </p>
-    </div>
-  </div>
-
-  <!-- Verification Modal -->
-  <div id="verifyModal" class="fixed inset-0 bg-black/60 modal-overlay flex items-center justify-center z-50 hidden p-2 sm:p-4">
-    <div class="bg-slate-800/95 backdrop-blur-sm rounded-2xl p-4 sm:p-6 md:p-8 max-w-2xl w-full mx-4 border border-slate-700/50 shadow-2xl max-h-[90vh] overflow-y-auto">
-      <div class="flex justify-between items-center mb-4 sm:mb-6">
-        <h3 class="text-xl sm:text-2xl font-bold gradient-text flex items-center gap-2 sm:gap-3">
-          <i class="fas fa-clipboard-check"></i> Verify Order
-        </h3>
-        <button id="closeVerify" class="text-3xl hover:text-red-400 transition-colors duration-200">×</button>
-      </div>
-      <div id="verifyContent" class="space-y-4 sm:space-y-6">
-        <!-- Dynamic content here -->
-      </div>
-      <div class="flex flex-col sm:flex-row justify-end gap-3 sm:gap-4 mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-slate-700/50">
-        <button id="cancelVerify" class="px-4 sm:px-6 py-2 sm:py-3 bg-gray-600/80 hover:bg-gray-700/80 rounded-xl transition-all duration-300 hover:scale-105 shadow-lg text-sm sm:text-base"> 
-          <i class="fas fa-times mr-2"></i> Cancel
-        </button>
-        <button id="doneVerify" class="px-4 sm:px-6 py-2 sm:py-3 bg-emerald-600/80 hover:bg-emerald-700/80 rounded-xl transition-all duration-300 hover:scale-105 shadow-lg text-sm sm:text-base">
-          <i class="fas fa-check mr-2"></i> Done & Verify
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <script src="script1.js"></script>
+  <script src="producer-dashboard-merged.js"></script>
 </body>
 </html>
