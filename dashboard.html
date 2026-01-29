@@ -85,13 +85,119 @@
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
-    .day-checkbox {
-      accent-color: #6366f1;
-      width: 20px;
-      height: 20px;
+    
+    /* Calendar Styles */
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 8px;
+    }
+    .calendar-day {
+      aspect-ratio: 1;
+      border: 2px solid #475569;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      background: rgba(51, 65, 85, 0.3);
+      position: relative;
+    }
+    .calendar-day:hover:not(.disabled) {
+      background: rgba(99, 102, 241, 0.2);
+      border-color: #6366f1;
+      transform: scale(1.05);
+    }
+    .calendar-day.selected {
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      border-color: #8b5cf6;
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.5);
+    }
+    .calendar-day.disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+      background: rgba(30, 41, 59, 0.3);
+    }
+    .calendar-day.today {
+      border-color: #10b981;
+      border-width: 3px;
+    }
+    .day-number {
+      font-size: 1.25rem;
+      font-weight: bold;
+    }
+    .day-name {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      color: #94a3b8;
+      margin-top: 2px;
+    }
+    .batch-selector {
+      background: rgba(51, 65, 85, 0.5);
+      border: 2px solid #475569;
+      border-radius: 12px;
+      padding: 16px;
+      margin-top: 12px;
+    }
+    .batch-option {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: rgba(71, 85, 105, 0.3);
+      border: 2px solid transparent;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    .batch-option:hover {
+      background: rgba(99, 102, 241, 0.2);
+      border-color: #6366f1;
+    }
+    .batch-option.selected {
+      background: rgba(99, 102, 241, 0.3);
+      border-color: #6366f1;
     }
     .batch-radio {
-      accent-color: #10b981;
+      width: 20px;
+      height: 20px;
+      accent-color: #6366f1;
+    }
+    .calendar-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding: 16px;
+      background: rgba(51, 65, 85, 0.3);
+      border-radius: 12px;
+    }
+    .month-nav-btn {
+      background: rgba(99, 102, 241, 0.2);
+      border: 2px solid #6366f1;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    .month-nav-btn:hover {
+      background: rgba(99, 102, 241, 0.4);
+      transform: scale(1.05);
+    }
+    .token-item {
+      background: rgba(51, 65, 85, 0.5);
+      border: 2px solid #475569;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      transition: all 0.3s ease;
+    }
+    .token-item:hover {
+      border-color: #6366f1;
+      background: rgba(51, 65, 85, 0.7);
     }
   </style>
 </head>
@@ -173,9 +279,9 @@
     </div>
   </div>
 
-  <!-- Add to Cart Modal (Weekly Selection) -->
+  <!-- Add to Cart Modal (Calendar-Based Selection) -->
   <div id="addToCartModal" class="fixed inset-0 bg-black/80 modal-overlay flex items-center justify-center z-50 hidden overflow-y-auto">
-    <div class="bg-slate-800/95 backdrop-blur-sm rounded-2xl p-8 max-w-3xl w-full mx-4 my-4 border border-slate-700/50 max-h-[90vh] overflow-y-auto">
+    <div class="bg-slate-800/95 backdrop-blur-sm rounded-2xl p-8 max-w-4xl w-full mx-4 my-4 border border-slate-700/50 max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center mb-6">
         <h3 class="text-3xl font-bold gradient-text">
           <i class="fas fa-calendar-alt"></i> Plan Your Meals
@@ -183,146 +289,54 @@
         <button id="closeAddToCart" class="text-4xl text-slate-400 hover:text-white transition">×</button>
       </div>
 
-      <div id="selectedMealInfo" class="mb-6 bg-slate-700/50 p-4 rounded-xl">
+      <div id="selectedMealInfo" class="mb-6 bg-slate-700/50 p-4 rounded-xl border border-slate-600/50">
         <!-- Meal info will be inserted here -->
       </div>
 
       <div class="mb-6">
-        <h4 class="text-xl font-bold mb-4 text-indigo-200">
-          <i class="fas fa-calendar-week mr-2"></i> Select Days
-        </h4>
-        <div class="grid grid-cols-1 gap-4">
-          <div class="day-row bg-slate-700/30 p-4 rounded-xl">
-            <div class="flex items-center justify-between mb-3">
-              <label class="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" class="day-checkbox" data-day="monday">
-                <span class="font-semibold text-lg">Monday</span>
-              </label>
-            </div>
-            <div class="ml-8 batch-selection hidden">
-              <span class="text-sm text-slate-400 mb-2 block">Select Batch:</span>
-              <div class="flex gap-6">
-                <label class="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="batch-monday" value="1" class="batch-radio">
-                  <span>Batch 1</span>
-                </label>
-                <label class="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="batch-monday" value="2" class="batch-radio">
-                  <span>Batch 2</span>
-                </label>
-              </div>
-            </div>
-          </div>
+        <div class="calendar-header">
+          <button id="prevMonth" class="month-nav-btn">
+            <i class="fas fa-chevron-left"></i>
+          </button>
+          <h4 id="currentMonth" class="text-2xl font-bold text-white"></h4>
+          <button id="nextMonth" class="month-nav-btn">
+            <i class="fas fa-chevron-right"></i>
+          </button>
+        </div>
 
-          <div class="day-row bg-slate-700/30 p-4 rounded-xl">
-            <div class="flex items-center justify-between mb-3">
-              <label class="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" class="day-checkbox" data-day="tuesday">
-                <span class="font-semibold text-lg">Tuesday</span>
-              </label>
-            </div>
-            <div class="ml-8 batch-selection hidden">
-              <span class="text-sm text-slate-400 mb-2 block">Select Batch:</span>
-              <div class="flex gap-6">
-                <label class="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="batch-tuesday" value="1" class="batch-radio">
-                  <span>Batch 1</span>
-                </label>
-                <label class="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="batch-tuesday" value="2" class="batch-radio">
-                  <span>Batch 2</span>
-                </label>
-              </div>
-            </div>
-          </div>
+        <div class="calendar-grid mb-6" id="calendarGrid">
+          <!-- Calendar days will be inserted here -->
+        </div>
 
-          <div class="day-row bg-slate-700/30 p-4 rounded-xl">
-            <div class="flex items-center justify-between mb-3">
-              <label class="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" class="day-checkbox" data-day="wednesday">
-                <span class="font-semibold text-lg">Wednesday</span>
-              </label>
-            </div>
-            <div class="ml-8 batch-selection hidden">
-              <span class="text-sm text-slate-400 mb-2 block">Select Batch:</span>
-              <div class="flex gap-6">
-                <label class="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="batch-wednesday" value="1" class="batch-radio">
-                  <span>Batch 1</span>
-                </label>
-                <label class="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="batch-wednesday" value="2" class="batch-radio">
-                  <span>Batch 2</span>
-                </label>
+        <div id="batchSelectionContainer" class="hidden">
+          <h4 class="text-xl font-bold mb-4 text-indigo-200">
+            <i class="fas fa-clock mr-2"></i> Select Batch Time
+          </h4>
+          <div class="space-y-3">
+            <label class="batch-option">
+              <input type="radio" name="batch-time" value="1" class="batch-radio">
+              <div class="flex-1">
+                <div class="font-semibold text-lg">Batch 1</div>
+                <div class="text-sm text-slate-400">12:30 PM - 1:00 PM</div>
               </div>
-            </div>
+            </label>
+            <label class="batch-option">
+              <input type="radio" name="batch-time" value="2" class="batch-radio">
+              <div class="flex-1">
+                <div class="font-semibold text-lg">Batch 2</div>
+                <div class="text-sm text-slate-400">1:00 PM - 2:00 PM</div>
+              </div>
+            </label>
           </div>
+        </div>
+      </div>
 
-          <div class="day-row bg-slate-700/30 p-4 rounded-xl">
-            <div class="flex items-center justify-between mb-3">
-              <label class="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" class="day-checkbox" data-day="thursday">
-                <span class="font-semibold text-lg">Thursday</span>
-              </label>
-            </div>
-            <div class="ml-8 batch-selection hidden">
-              <span class="text-sm text-slate-400 mb-2 block">Select Batch:</span>
-              <div class="flex gap-6">
-                <label class="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="batch-thursday" value="1" class="batch-radio">
-                  <span>Batch 1</span>
-                </label>
-                <label class="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="batch-thursday" value="2" class="batch-radio">
-                  <span>Batch 2</span>
-                </label>
-              </div>
-            </div>
-          </div>
-
-          <div class="day-row bg-slate-700/30 p-4 rounded-xl">
-            <div class="flex items-center justify-between mb-3">
-              <label class="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" class="day-checkbox" data-day="friday">
-                <span class="font-semibold text-lg">Friday</span>
-              </label>
-            </div>
-            <div class="ml-8 batch-selection hidden">
-              <span class="text-sm text-slate-400 mb-2 block">Select Batch:</span>
-              <div class="flex gap-6">
-                <label class="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="batch-friday" value="1" class="batch-radio">
-                  <span>Batch 1</span>
-                </label>
-                <label class="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="batch-friday" value="2" class="batch-radio">
-                  <span>Batch 2</span>
-                </label>
-              </div>
-            </div>
-          </div>
-
-          <div class="day-row bg-slate-700/30 p-4 rounded-xl">
-            <div class="flex items-center justify-between mb-3">
-              <label class="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" class="day-checkbox" data-day="saturday">
-                <span class="font-semibold text-lg">Saturday</span>
-              </label>
-            </div>
-            <div class="ml-8 batch-selection hidden">
-              <span class="text-sm text-slate-400 mb-2 block">Select Batch:</span>
-              <div class="flex gap-6">
-                <label class="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="batch-saturday" value="1" class="batch-radio">
-                  <span>Batch 1</span>
-                </label>
-                <label class="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="batch-saturday" value="2" class="batch-radio">
-                  <span>Batch 2</span>
-                </label>
-              </div>
-            </div>
-          </div>
+      <div class="bg-indigo-900/30 border border-indigo-700/50 rounded-xl p-4 mb-6">
+        <h5 class="font-semibold mb-2 text-indigo-200">
+          <i class="fas fa-info-circle mr-2"></i> Selected Days:
+        </h5>
+        <div id="selectedDaysSummary" class="text-sm text-slate-300">
+          No days selected yet
         </div>
       </div>
 
@@ -331,6 +345,47 @@
           <i class="fas fa-plus mr-2"></i> Add to Cart
         </button>
         <button id="cancelAddToCart" class="flex-1 bg-slate-600 hover:bg-slate-700 px-8 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg">
+          <i class="fas fa-times mr-2"></i> Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- My Tokens Modal -->
+  <div id="myTokensModal" class="fixed inset-0 bg-black/80 modal-overlay flex items-center justify-center z-50 hidden overflow-y-auto">
+    <div class="bg-slate-800/95 backdrop-blur-sm rounded-2xl p-8 max-w-4xl w-full mx-4 my-4 border border-slate-700/50 max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center mb-6">
+        <h3 class="text-3xl font-bold gradient-text">
+          <i class="fas fa-ticket-alt"></i> My Tokens
+        </h3>
+        <button id="closeMyTokens" class="text-4xl text-slate-400 hover:text-white transition">×</button>
+      </div>
+
+      <div id="tokensList" class="space-y-4">
+        <!-- Tokens will be listed here -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Token Modal -->
+  <div id="editTokenModal" class="fixed inset-0 bg-black/80 modal-overlay flex items-center justify-center z-50 hidden overflow-y-auto">
+    <div class="bg-slate-800/95 backdrop-blur-sm rounded-2xl p-8 max-w-3xl w-full mx-4 my-4 border border-slate-700/50 max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center mb-6">
+        <h3 class="text-3xl font-bold gradient-text">
+          <i class="fas fa-edit"></i> Edit Token
+        </h3>
+        <button id="closeEditToken" class="text-4xl text-slate-400 hover:text-white transition">×</button>
+      </div>
+
+      <div id="editTokenContent" class="space-y-6">
+        <!-- Token edit content will be inserted here -->
+      </div>
+
+      <div class="flex gap-4 mt-6">
+        <button id="saveTokenChanges" class="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 px-8 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg">
+          <i class="fas fa-save mr-2"></i> Save Changes
+        </button>
+        <button id="cancelEditToken" class="flex-1 bg-slate-600 hover:bg-slate-700 px-8 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg">
           <i class="fas fa-times mr-2"></i> Cancel
         </button>
       </div>
@@ -367,7 +422,7 @@
       </div>
 
       <p class="text-white/70 mt-4 text-center text-sm">
-        <i class="fas fa-info-circle mr-2"></i> Valid until 5:00 PM today
+        <i class="fas fa-info-circle mr-2"></i> Valid for selected date
       </p>
     </div>
   </div>
@@ -475,8 +530,13 @@
           <span id="cartBadge" class="cart-badge hidden">0</span>
         </button>
         
+        <!-- My Tokens Icon -->
+        <button id="myTokensBtn" class="text-2xl p-3 bg-purple-600/70 hover:bg-purple-600 rounded-full transition-all shadow-lg" title="My Tokens">
+          <i class="fas fa-list-alt"></i>
+        </button>
+        
         <!-- Token Pass Icon -->
-        <button id="tokenBtn" class="text-2xl p-3 bg-indigo-600/70 hover:bg-indigo-600 rounded-full transition-all shadow-lg" title="Token Pass">
+        <button id="tokenBtn" class="text-2xl p-3 bg-indigo-600/70 hover:bg-indigo-600 rounded-full transition-all shadow-lg" title="Today's Token">
           <i class="fas fa-ticket-alt"></i>
         </button>
         
