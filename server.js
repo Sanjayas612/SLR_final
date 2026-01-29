@@ -1,4 +1,4 @@
-// server.js - Enhanced Push Notifications with Smart Targeting
+// server.js - Enhanced with Calendar-Based Ordering and Token Management
 const express = require("express");
 require("dotenv").config();
 const mongoose = require("mongoose");
@@ -104,10 +104,10 @@ const userSchema = new mongoose.Schema({
     mealName: String,
     price: Number,
     date: { type: Date, default: Date.now },
+    orderDate: String, // ISO date string for the actual order date
     paid: { type: Boolean, default: false },
     token: String,
-    day: String,
-    batch: String
+    batch: Number
   }],
   verifiedToday: {
     date: String,
@@ -144,12 +144,14 @@ const mealSchema = new mongoose.Schema({
 
 const Meal = mongoose.model("Meal", mealSchema);
 
+// Updated Token Schema
 const tokenSchema = new mongoose.Schema({
   token: { type: String, required: true },
-  date: { type: String, required: true },
+  date: { type: String, required: true }, // ISO date string (YYYY-MM-DD)
   userEmail: { type: String, required: true },
   userName: { type: String, required: true },
   userPhoto: String,
+  batch: { type: Number, required: true }, // 1 or 2
   meals: [{
     name: String,
     quantity: Number,
@@ -172,7 +174,7 @@ const tokenSchema = new mongoose.Schema({
   }
 });
 
-tokenSchema.index({ token: 1, date: 1 }, { unique: true });
+tokenSchema.index({ token: 1, date: 1, batch: 1 }, { unique: true });
 const Token = mongoose.model("Token", tokenSchema);
 
 // Notification Log Schema
@@ -184,7 +186,7 @@ const notificationLogSchema = new mongoose.Schema({
   sentAt: { type: Date, default: Date.now },
   success: Boolean,
   error: String,
-  reason: String // Why this user received the notification
+  reason: String
 });
 
 const NotificationLog = mongoose.model("NotificationLog", notificationLogSchema);
@@ -192,65 +194,6 @@ const NotificationLog = mongoose.model("NotificationLog", notificationLogSchema)
 // SSE connections
 let sseClients = [];
 let producerSSEClients = [];
-
-// ==================== SMART TARGETING FUNCTIONS ====================
-
-// Get students who need notifications (haven't ordered or haven't verified)
-async function getTargetedStudents() {
-  try {
-    const todayStr = new Date().toDateString();
-    const allStudents = await User.find({ role: 'student', pushSubscription: { $ne: null } });
-    
-    const targeted = {
-      noOrder: [],           // Students who haven't ordered today
-      notVerified: [],       // Students who ordered but haven't verified
-      allGood: []            // Students who ordered and verified (skip these)
-    };
-
-    for (const student of allStudents) {
-      // Check if student has ordered today
-      const todayOrders = student.orders.filter(o => 
-        new Date(o.date).toDateString() === todayStr
-      );
-
-      if (todayOrders.length === 0) {
-        // No orders today - SEND NOTIFICATION
-        targeted.noOrder.push({
-          email: student.email,
-          name: student.name,
-          reason: 'no_order_today'
-        });
-      } else {
-        // Has orders - check if verified
-        const hasVerified = student.verifiedToday && 
-                          student.verifiedToday.date === todayStr && 
-                          student.verifiedToday.verified;
-
-        if (!hasVerified) {
-          // Ordered but not verified - SEND NOTIFICATION
-          targeted.notVerified.push({
-            email: student.email,
-            name: student.name,
-            reason: 'not_verified',
-            orderCount: todayOrders.length
-          });
-        } else {
-          // Ordered and verified - SKIP
-          targeted.allGood.push({
-            email: student.email,
-            name: student.name,
-            reason: 'already_verified'
-          });
-        }
-      }
-    }
-
-    return targeted;
-  } catch (err) {
-    console.error('Error getting targeted students:', err);
-    return { noOrder: [], notVerified: [], allGood: [] };
-  }
-}
 
 // ==================== PUSH NOTIFICATION FUNCTIONS ====================
 
@@ -304,7 +247,6 @@ async function sendPushNotification(userEmail, payload) {
 
     await webpush.sendNotification(user.pushSubscription, notificationPayload);
     
-    // Log successful notification
     await new NotificationLog({
       userEmail,
       type: payload.type || 'order_update',
@@ -314,7 +256,6 @@ async function sendPushNotification(userEmail, payload) {
       reason: payload.reason || 'manual'
     }).save();
 
-    // Update last notification time
     user.lastNotificationSent = new Date();
     await user.save();
 
@@ -323,7 +264,6 @@ async function sendPushNotification(userEmail, payload) {
   } catch (err) {
     console.error(`❌ Push notification error for ${userEmail}:`, err.message);
     
-    // Log failed notification
     await new NotificationLog({
       userEmail,
       type: payload.type || 'order_update',
@@ -334,7 +274,6 @@ async function sendPushNotification(userEmail, payload) {
       reason: payload.reason || 'manual'
     }).save();
 
-    // If subscription is invalid, remove it
     if (err.statusCode === 410 || err.statusCode === 404) {
       console.log(`🗑️ Removing invalid subscription for ${userEmail}`);
       const user = await User.findOne({ email: userEmail });
@@ -348,321 +287,7 @@ async function sendPushNotification(userEmail, payload) {
   }
 }
 
-// Send targeted notifications (only to students who need them)
-async function sendTargetedNotifications(payload) {
-  try {
-    const targeted = await getTargetedStudents();
-    
-    // Combine students who need notifications
-    const studentsToNotify = [
-      ...targeted.noOrder,
-      ...targeted.notVerified
-    ];
-
-    console.log(`📢 Targeted Notification Summary:`);
-    console.log(`   • No orders today: ${targeted.noOrder.length} students`);
-    console.log(`   • Not verified: ${targeted.notVerified.length} students`);
-    console.log(`   • Already verified (skipped): ${targeted.allGood.length} students`);
-    console.log(`   • TOTAL TO NOTIFY: ${studentsToNotify.length} students`);
-    
-    const results = {
-      total: studentsToNotify.length,
-      successful: 0,
-      failed: 0,
-      skipped: targeted.allGood.length,
-      breakdown: {
-        noOrder: targeted.noOrder.length,
-        notVerified: targeted.notVerified.length,
-        alreadyVerified: targeted.allGood.length
-      },
-      errors: []
-    };
-
-    for (const student of studentsToNotify) {
-      // Customize message based on reason
-      let customPayload = { ...payload };
-      
-      if (student.reason === 'no_order_today') {
-        customPayload.body = `⏰ Good Morning! You haven't ordered meals for today yet. Don't miss out on delicious food! 🍽️`;
-      } else if (student.reason === 'not_verified') {
-        customPayload.body = `⚠️ You have ${student.orderCount} order(s) today that need verification. Please visit the mess to verify your token! 🎫`;
-      }
-      
-      customPayload.reason = student.reason;
-      
-      const result = await sendPushNotification(student.email, customPayload);
-      if (result.success) {
-        results.successful++;
-      } else {
-        results.failed++;
-        results.errors.push({ email: student.email, error: result.error });
-      }
-      
-      // Small delay to avoid overwhelming the push service
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-
-    console.log(`✅ Targeted notification complete: ${results.successful}/${results.total} successful (${results.skipped} skipped)`);
-    return results;
-  } catch (err) {
-    console.error('❌ Targeted notification error:', err);
-    return { success: false, error: err.message };
-  }
-}
-
-// ==================== PRODUCER NOTIFICATION ENDPOINTS ====================
-
-// Send reminder to targeted students (Producer-triggered)
-app.post('/producer/send-reminders', async (req, res) => {
-  try {
-    const { producerEmail, message, targetType } = req.body;
-    
-    // Verify producer
-    const producer = await User.findOne({ email: producerEmail, role: 'producer' });
-    if (!producer) {
-      return res.status(403).json({ success: false, error: 'Unauthorized: Producer only' });
-    }
-
-    // Get targeted students
-    const targeted = await getTargetedStudents();
-
-    let notificationBody = message || '⏰ Meal Reminder! Don\'t forget to order your meals for today! 🍽️';
-
-    const payload = {
-      title: '🍽️ MessMate - Meal Reminder',
-      body: notificationBody,
-      type: 'producer_alert',
-      icon: '/icon-192x192.png',
-      badge: '/badge-72x72.png',
-      data: {
-        url: '/dashboard',
-        action: 'view_meals'
-      }
-    };
-
-    const results = await sendTargetedNotifications(payload);
-
-    // Notify producer clients
-    broadcastToProducers({
-      type: 'reminder_sent',
-      results,
-      timestamp: new Date().toISOString()
-    });
-
-    res.json({ 
-      success: true, 
-      message: 'Targeted reminders sent successfully',
-      results 
-    });
-  } catch (err) {
-    console.error('Send reminders error:', err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// Get notification statistics (for producer dashboard)
-app.get('/producer/notification-stats', async (req, res) => {
-  try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const stats = await NotificationLog.aggregate([
-      {
-        $match: {
-          sentAt: { $gte: today }
-        }
-      },
-      {
-        $group: {
-          _id: '$success',
-          count: { $sum: 1 }
-        }
-      }
-    ]);
-
-    // Get targeted students info
-    const targeted = await getTargetedStudents();
-
-    const totalStudents = await User.countDocuments({ role: 'student' });
-    const subscribedStudents = await User.countDocuments({ 
-      role: 'student',
-      pushSubscription: { $ne: null }
-    });
-
-    const successful = stats.find(s => s._id === true)?.count || 0;
-    const failed = stats.find(s => s._id === false)?.count || 0;
-
-    res.json({
-      success: true,
-      stats: {
-        totalStudents,
-        subscribedStudents,
-        notificationsToday: {
-          successful,
-          failed,
-          total: successful + failed
-        },
-        subscriptionRate: ((subscribedStudents / totalStudents) * 100).toFixed(1),
-        targeting: {
-          noOrderToday: targeted.noOrder.length,
-          notVerified: targeted.notVerified.length,
-          alreadyVerified: targeted.allGood.length,
-          willNotify: targeted.noOrder.length + targeted.notVerified.length
-        }
-      }
-    });
-  } catch (err) {
-    console.error('Notification stats error:', err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// Get recent notifications log
-app.get('/producer/recent-notifications', async (req, res) => {
-  try {
-    const limit = parseInt(req.query.limit) || 20;
-    
-    const notifications = await NotificationLog.find()
-      .sort({ sentAt: -1 })
-      .limit(limit)
-      .lean();
-
-    res.json({
-      success: true,
-      notifications
-    });
-  } catch (err) {
-    console.error('Recent notifications error:', err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// ==================== SCHEDULED NOTIFICATIONS ====================
-
-// Daily reminder at 10 AM (Monday to Saturday) - IST Time
-cron.schedule('0 10 * * 1-6', async () => {
-  console.log('⏰ Running scheduled 10 AM meal reminder (TARGETED)...');
-  
-  try {
-    const targeted = await getTargetedStudents();
-    
-    console.log(`📊 10 AM Reminder Targeting:`);
-    console.log(`   • Students with no orders: ${targeted.noOrder.length}`);
-    console.log(`   • Students not verified: ${targeted.notVerified.length}`);
-    console.log(`   • Students already verified (skip): ${targeted.allGood.length}`);
-
-    const payload = {
-      title: '🌅 Good Morning! Time for Breakfast',
-      body: '⏰ It\'s 10 AM! Don\'t forget to check your meal status. 🍽️',
-      type: 'daily_reminder',
-      icon: '/icon-192x192.png',
-      badge: '/badge-72x72.png',
-      data: {
-        url: '/dashboard',
-        action: 'view_meals',
-        scheduled: true
-      }
-    };
-
-    const results = await sendTargetedNotifications(payload);
-    
-    console.log(`✅ 10 AM targeted reminder complete: ${results.successful}/${results.total} sent (${results.skipped} skipped)`);
-    
-    // Notify producers about the reminder
-    broadcastToProducers({
-      type: 'scheduled_reminder_sent',
-      time: '10:00 AM',
-      results,
-      timestamp: new Date().toISOString()
-    });
-
-  } catch (err) {
-    console.error('❌ Scheduled reminder error:', err);
-  }
-}, {
-  timezone: "Asia/Kolkata"
-});
-
-// Payment reminder - 6 PM (for students with unverified orders)
-cron.schedule('0 18 * * 1-6', async () => {
-  console.log('⏰ Running 6 PM verification reminder...');
-  
-  try {
-    const todayStr = new Date().toDateString();
-    const students = await User.find({ role: 'student', pushSubscription: { $ne: null } });
-    
-    let notificationsSent = 0;
-    
-    for (const student of students) {
-      // Check if student has orders but hasn't verified
-      const todayOrders = student.orders.filter(o => 
-        new Date(o.date).toDateString() === todayStr && o.paid
-      );
-      
-      const hasVerified = student.verifiedToday && 
-                        student.verifiedToday.date === todayStr && 
-                        student.verifiedToday.verified;
-      
-      if (todayOrders.length > 0 && !hasVerified && student.pushSubscription) {
-        const totalAmount = todayOrders.reduce((sum, order) => sum + order.price, 0);
-        
-        await sendPushNotification(student.email, {
-          title: '⚠️ Verification Reminder',
-          body: `You have ${todayOrders.length} order(s) today (₹${totalAmount}) that need verification. Please visit the mess to verify your token! 🎫`,
-          type: 'payment_reminder',
-          reason: 'not_verified_6pm',
-          data: {
-            url: '/dashboard',
-            action: 'verify_orders'
-          }
-        });
-        
-        notificationsSent++;
-        // Small delay between notifications
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-    }
-    
-    console.log(`✅ 6 PM verification reminders sent to ${notificationsSent} students`);
-  } catch (err) {
-    console.error('❌ 6 PM reminder error:', err);
-  }
-}, {
-  timezone: "Asia/Kolkata"
-});
-
-// ==================== SSE FOR PRODUCER DASHBOARD ====================
-
-app.get('/producer/sse', (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-
-  producerSSEClients.push(res);
-  console.log('✅ Producer connected to notification SSE');
-
-  // Send initial connection message
-  res.write(`data: ${JSON.stringify({ type: 'connected', timestamp: new Date().toISOString() })}\n\n`);
-
-  req.on('close', () => {
-    producerSSEClients = producerSSEClients.filter(client => client !== res);
-    console.log('❌ Producer disconnected from notification SSE');
-  });
-});
-
-function broadcastToProducers(data) {
-  const message = JSON.stringify(data);
-  producerSSEClients.forEach(client => {
-    try {
-      client.write(`data: ${message}\n\n`);
-    } catch (err) {
-      console.error('Error broadcasting to producer:', err);
-    }
-  });
-}
-
-// ==================== EXISTING ENDPOINTS (keeping all original functionality) ====================
+// ==================== EXISTING ENDPOINTS ====================
 
 // Initialize meals
 async function initMeals() {
@@ -924,7 +549,7 @@ app.delete("/delete-meal/:id", async (req, res) => {
   }
 });
 
-// Checkout (create token)
+// Enhanced Checkout (Calendar-Based)
 app.post("/checkout", async (req, res) => {
   try {
     const { email, orders } = req.body;
@@ -938,84 +563,190 @@ app.post("/checkout", async (req, res) => {
       return res.json({ success: false, error: "User not found" });
     }
 
-    const today = new Date().toDateString();
-    const existingToken = await Token.findOne({ userEmail: email, date: today });
+    // Group orders by date and batch
+    const ordersByDateBatch = {};
+    
+    orders.forEach(order => {
+      const key = `${order.date}_${order.batch}`;
+      if (!ordersByDateBatch[key]) {
+        ordersByDateBatch[key] = {
+          date: order.date,
+          batch: order.batch,
+          meals: {}
+        };
+      }
+      
+      if (!ordersByDateBatch[key].meals[order.mealName]) {
+        ordersByDateBatch[key].meals[order.mealName] = {
+          quantity: 0,
+          price: order.price
+        };
+      }
+      ordersByDateBatch[key].meals[order.mealName].quantity++;
+    });
 
-    if (existingToken) {
-      return res.json({
-        success: true,
-        token: existingToken.token,
-        meals: existingToken.meals
+    const tokens = [];
+
+    for (const key in ordersByDateBatch) {
+      const { date, batch, meals } = ordersByDateBatch[key];
+      
+      // Get count of tokens for this date and batch to generate unique token number
+      const tokenCount = await Token.countDocuments({ date, batch });
+      const newToken = (tokenCount + 1).toString();
+
+      const mealArray = Object.entries(meals).map(([name, data]) => ({
+        name,
+        quantity: data.quantity,
+        price: data.price
+      }));
+
+      const totalAmount = mealArray.reduce((sum, m) => sum + (m.price * m.quantity), 0);
+
+      const tokenDoc = new Token({
+        token: newToken,
+        date,
+        batch,
+        userEmail: email,
+        userName: user.name,
+        userPhoto: user.profilePhoto,
+        meals: mealArray,
+        totalAmount,
+        paid: true,
+        verified: false
+      });
+
+      await tokenDoc.save();
+      
+      tokens.push({
+        token: newToken,
+        date,
+        batch,
+        meals: mealArray
+      });
+
+      // Add to user orders
+      mealArray.forEach(meal => {
+        for (let i = 0; i < meal.quantity; i++) {
+          user.orders.push({
+            mealName: meal.name,
+            price: meal.price,
+            date: new Date(),
+            orderDate: date,
+            paid: true,
+            batch: batch,
+            token: newToken
+          });
+        }
       });
     }
 
-    const mealGroups = {};
-    let totalAmount = 0;
-
-    orders.forEach(order => {
-      if (!mealGroups[order.mealName]) {
-        mealGroups[order.mealName] = { quantity: 0, price: order.price };
-      }
-      mealGroups[order.mealName].quantity++;
-      totalAmount += order.price;
-
-      user.orders.push({
-        mealName: order.mealName,
-        price: order.price,
-        date: new Date(),
-        paid: true,
-        day: order.day,
-        batch: order.batch
-      });
-    });
-
     await user.save();
-
-    const tokenCount = await Token.countDocuments({ date: today });
-    const newToken = (tokenCount + 1).toString();
-
-    const meals = Object.entries(mealGroups).map(([name, data]) => ({
-      name,
-      quantity: data.quantity,
-      price: data.price
-    }));
-
-    const tokenDoc = new Token({
-      token: newToken,
-      date: today,
-      userEmail: email,
-      userName: user.name,
-      userPhoto: user.profilePhoto,
-      meals,
-      totalAmount,
-      paid: true,
-      verified: false
-    });
-
-    await tokenDoc.save();
 
     // Send order confirmation notification
     await sendPushNotification(email, {
       title: '✅ Order Confirmed!',
-      body: `Your order has been placed successfully. Total: ₹${totalAmount}. Token #${newToken}`,
+      body: `Your order has been placed successfully. ${tokens.length} token(s) generated.`,
       type: 'order_update',
       reason: 'order_placed',
       data: {
-        url: '/dashboard',
-        token: newToken
+        url: '/dashboard'
       }
     });
 
-    res.json({ success: true, token: newToken, meals });
+    res.json({ success: true, tokens });
+  } catch (err) {
+    console.error('Checkout error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get user tokens
+app.get("/user-tokens/:email", async (req, res) => {
+  try {
+    const tokens = await Token.find({ userEmail: req.params.email }).sort({ date: -1, batch: 1 });
+    res.json({ success: true, tokens });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
 // Get token details
+app.get("/token-details/:id", async (req, res) => {
+  try {
+    const token = await Token.findById(req.params.id);
+    
+    if (!token) {
+      return res.json({ success: false, error: "Token not found" });
+    }
+
+    res.json({ success: true, token });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Update token
+app.put("/update-token/:id", async (req, res) => {
+  try {
+    const { meals } = req.body;
+    const token = await Token.findById(req.params.id);
+
+    if (!token) {
+      return res.json({ success: false, error: "Token not found" });
+    }
+
+    if (token.verified) {
+      return res.json({ success: false, error: "Cannot edit verified token" });
+    }
+
+    // Check if token date is in the past
+    const tokenDate = new Date(token.date + 'T00:00:00');
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    if (tokenDate < today) {
+      return res.json({ success: false, error: "Cannot edit past tokens" });
+    }
+
+    token.meals = meals;
+    token.totalAmount = meals.reduce((sum, m) => sum + (m.price * m.quantity), 0);
+    await token.save();
+
+    // Update user orders
+    const user = await User.findOne({ email: token.userEmail });
+    if (user) {
+      // Remove old orders for this token
+      user.orders = user.orders.filter(o => o.token !== token.token || o.orderDate !== token.date);
+      
+      // Add updated orders
+      meals.forEach(meal => {
+        for (let i = 0; i < meal.quantity; i++) {
+          user.orders.push({
+            mealName: meal.name,
+            price: meal.price,
+            date: new Date(),
+            orderDate: token.date,
+            paid: true,
+            batch: token.batch,
+            token: token.token
+          });
+        }
+      });
+      
+      await user.save();
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Update token error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get token by token number
 app.get("/token/:token", async (req, res) => {
   try {
-    const today = new Date().toDateString();
+    const today = new Date().toISOString().split('T')[0];
     const tokenDoc = await Token.findOne({
       token: req.params.token,
       date: today
@@ -1031,6 +762,7 @@ app.get("/token/:token", async (req, res) => {
       userEmail: tokenDoc.userEmail,
       userName: tokenDoc.userName,
       userPhoto: tokenDoc.userPhoto,
+      batch: tokenDoc.batch,
       meals: tokenDoc.meals,
       totalAmount: tokenDoc.totalAmount,
       paid: tokenDoc.paid,
@@ -1047,7 +779,7 @@ app.get("/token/:token", async (req, res) => {
 app.post("/verify-token-payment", async (req, res) => {
   try {
     const { token } = req.body;
-    const today = new Date().toDateString();
+    const today = new Date().toISOString().split('T')[0];
 
     const tokenDoc = await Token.findOne({ token, date: today });
     if (!tokenDoc) {
@@ -1068,7 +800,6 @@ app.post("/verify-token-payment", async (req, res) => {
       };
       await user.save();
 
-      // Send verification notification
       await sendPushNotification(tokenDoc.userEmail, {
         title: '🎉 Payment Verified!',
         body: 'Your payment has been verified. Enjoy your meal!',
@@ -1099,7 +830,7 @@ app.post("/verify-qr", async (req, res) => {
     }
 
     const todayOrders = user.orders.filter(o => 
-      new Date(o.date).toDateString() === date && o.paid
+      (o.orderDate === date || new Date(o.date).toISOString().split('T')[0] === date) && o.paid
     );
 
     if (todayOrders.length === 0) {
@@ -1128,14 +859,12 @@ app.post("/verify-qr", async (req, res) => {
 
     await user.save();
 
-    const tokenDoc = await Token.findOne({ userEmail, date });
-    if (tokenDoc) {
-      tokenDoc.verified = true;
-      tokenDoc.verifiedAt = new Date();
-      await tokenDoc.save();
-    }
+    // Mark all tokens for this date as verified
+    await Token.updateMany(
+      { userEmail, date },
+      { verified: true, verifiedAt: new Date() }
+    );
 
-    // Send notification
     await sendPushNotification(userEmail, {
       title: '🎉 Order Verified!',
       body: 'Your meal order has been verified. Enjoy your food!',
@@ -1244,10 +973,11 @@ app.get("/producer/stats", async (req, res) => {
     const users = await User.find({});
     let allOrders = [];
     let verifiedCount = 0;
+    
     users.forEach(u => {
       allOrders.push(...(u.orders || []));
       if (u.verifiedToday && u.verifiedToday.verified) {
-        const todayStr = new Date().toDateString();
+        const todayStr = new Date().toISOString().split('T')[0];
         if (u.verifiedToday.date === todayStr) {
           verifiedCount += u.verifiedToday.meals.reduce((sum, m) => sum + m.quantity, 0);
         }
@@ -1352,9 +1082,8 @@ app.listen(PORT, () => {
   console.log("📡 MongoDB connection active");
   console.log("☁️ Cloudinary configured");
   console.log("🔐 Google OAuth configured");
-  console.log("🔔 Push notifications enabled with SMART TARGETING");
-  console.log("⏰ Daily reminders scheduled:");
-  console.log("   - 10:00 AM: Meal reminder (ONLY students who haven't ordered or verified)");
-  console.log("   - 6:00 PM: Verification reminder (ONLY students with unverified orders)");
-  console.log("🎯 Targeting: Notifications sent ONLY to students who need them!");
+  console.log("🔔 Push notifications enabled");
+  console.log("📅 Calendar-based ordering system active");
+  console.log("✏️ Token editing feature enabled");
+  console.log("🎫 Unique tokens per date & batch");
 });
