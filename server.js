@@ -211,9 +211,11 @@ let producerSSEClients = [];
 // ==================== SCHEDULED TOKEN GENERATION ====================
 
 // Run every day at 8:00 AM to generate tokens for today's orders
-cron.schedule('0 8 * * *', async () => {
-  console.log('🕐 Running scheduled token generation at 8:00 AM');
+cron.schedule('50 18 * * *', async () => {
+  console.log('🕕 Running scheduled token generation at 6:47 PM');
   await generateDailyTokens();
+});
+
 }, {
   timezone: "Asia/Kolkata"
 });
