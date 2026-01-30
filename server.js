@@ -1,4 +1,4 @@
-// server.js - Enhanced with Calendar-Based Ordering and Token Management
+// server.js - Fixed version with proper token indexing and notifications
 const express = require("express");
 require("dotenv").config();
 const mongoose = require("mongoose");
@@ -70,8 +70,17 @@ mongoose.connect(mongoURI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
   serverSelectionTimeoutMS: 10000
-}).then(() => {
+}).then(async () => {
   console.log("✅ MongoDB Connected Successfully");
+  
+  // Drop the old problematic index if it exists
+  try {
+    await Token.collection.dropIndex('token_1');
+    console.log("✅ Dropped old token index");
+  } catch (err) {
+    // Index might not exist, that's okay
+  }
+  
   initMeals();
 }).catch(err => {
   console.error("❌ MongoDB Connection Error:", err.message);
@@ -144,7 +153,7 @@ const mealSchema = new mongoose.Schema({
 
 const Meal = mongoose.model("Meal", mealSchema);
 
-// Updated Token Schema
+// FIXED Token Schema - Removed single token index
 const tokenSchema = new mongoose.Schema({
   token: { type: String, required: true },
   date: { type: String, required: true }, // ISO date string (YYYY-MM-DD)
@@ -174,7 +183,10 @@ const tokenSchema = new mongoose.Schema({
   }
 });
 
+// CRITICAL FIX: Compound unique index on token + date + batch
+// This allows token "1" to exist for different dates and batches
 tokenSchema.index({ token: 1, date: 1, batch: 1 }, { unique: true });
+
 const Token = mongoose.model("Token", tokenSchema);
 
 // Notification Log Schema
@@ -286,6 +298,212 @@ async function sendPushNotification(userEmail, payload) {
     return { success: false, error: err.message };
   }
 }
+
+// ==================== NOTIFICATION ENDPOINTS ====================
+
+// Get notification stats
+app.get('/producer/notification-stats', async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Get all students
+    const allStudents = await User.find({ role: 'student' });
+    const subscribedStudents = allStudents.filter(u => u.pushSubscription).length;
+    
+    // Get today's notifications
+    const todayNotifications = await NotificationLog.find({
+      sentAt: { $gte: new Date(today) }
+    });
+    
+    // Calculate targeting
+    let noOrderToday = 0;
+    let notVerified = 0;
+    let alreadyVerified = 0;
+    
+    for (const student of allStudents) {
+      // Check if they have an order for today
+      const todayOrder = student.orders.find(o => o.orderDate === today);
+      
+      if (!todayOrder) {
+        noOrderToday++;
+        continue;
+      }
+      
+      // Check if verified
+      if (student.verifiedToday && student.verifiedToday.date === today && student.verifiedToday.verified) {
+        alreadyVerified++;
+      } else {
+        notVerified++;
+      }
+    }
+    
+    const willNotify = noOrderToday + notVerified;
+    
+    res.json({
+      success: true,
+      stats: {
+        subscribedStudents,
+        totalStudents: allStudents.length,
+        notificationsToday: {
+          successful: todayNotifications.filter(n => n.success).length,
+          failed: todayNotifications.filter(n => !n.success).length
+        },
+        targeting: {
+          noOrderToday,
+          notVerified,
+          alreadyVerified,
+          willNotify
+        }
+      }
+    });
+  } catch (err) {
+    console.error('Notification stats error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get recent notifications
+app.get('/producer/recent-notifications', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+    const notifications = await NotificationLog.find()
+      .sort({ sentAt: -1 })
+      .limit(limit);
+    
+    res.json({ success: true, notifications });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Send reminders
+app.post('/producer/send-reminders', async (req, res) => {
+  try {
+    const { producerEmail, message } = req.body;
+    const today = new Date().toISOString().split('T')[0];
+    
+    const students = await User.find({ role: 'student' });
+    
+    let successful = 0;
+    let failed = 0;
+    let skipped = 0;
+    const breakdown = {
+      noOrder: 0,
+      notVerified: 0,
+      alreadyVerified: 0
+    };
+    
+    for (const student of students) {
+      // Skip if no push subscription
+      if (!student.pushSubscription) {
+        skipped++;
+        continue;
+      }
+      
+      // Check if they have an order for today
+      const todayOrder = student.orders.find(o => o.orderDate === today);
+      
+      let shouldNotify = false;
+      let reason = '';
+      let notificationTitle = '';
+      let notificationBody = '';
+      
+      if (!todayOrder) {
+        // No order for today - send reminder to order
+        shouldNotify = true;
+        reason = 'no_order_today';
+        notificationTitle = '🍽️ Don\'t Forget to Order!';
+        notificationBody = message || 'You haven\'t ordered your meal for today. Place your order now!';
+        breakdown.noOrder++;
+      } else {
+        // Has order - check if verified
+        if (student.verifiedToday && student.verifiedToday.date === today && student.verifiedToday.verified) {
+          // Already verified - skip
+          skipped++;
+          breakdown.alreadyVerified++;
+          continue;
+        } else {
+          // Not verified - send payment reminder
+          shouldNotify = true;
+          reason = 'not_verified';
+          notificationTitle = '⏰ Payment Reminder';
+          notificationBody = message || 'Please complete your payment and verify your token to collect your meal!';
+          breakdown.notVerified++;
+        }
+      }
+      
+      if (shouldNotify) {
+        const result = await sendPushNotification(student.email, {
+          title: notificationTitle,
+          body: notificationBody,
+          type: 'daily_reminder',
+          reason: reason,
+          data: { url: '/dashboard' }
+        });
+        
+        if (result.success) {
+          successful++;
+        } else {
+          failed++;
+        }
+      }
+    }
+    
+    // Broadcast to producer SSE clients
+    const sseData = {
+      type: 'reminder_sent',
+      results: {
+        successful,
+        failed,
+        skipped,
+        total: students.length,
+        breakdown
+      },
+      timestamp: new Date()
+    };
+    
+    producerSSEClients.forEach(client => {
+      try {
+        client.write(`data: ${JSON.stringify(sseData)}\n\n`);
+      } catch (err) {
+        console.error('SSE broadcast error:', err);
+      }
+    });
+    
+    res.json({
+      success: true,
+      results: {
+        successful,
+        failed,
+        skipped,
+        total: students.length,
+        breakdown
+      }
+    });
+  } catch (err) {
+    console.error('Send reminders error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Producer SSE endpoint
+app.get('/producer/sse', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  producerSSEClients.push(res);
+  console.log('Producer client connected to SSE');
+
+  // Send initial connection message
+  res.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
+
+  req.on('close', () => {
+    producerSSEClients = producerSSEClients.filter(client => client !== res);
+    console.log('Producer client disconnected from SSE');
+  });
+});
 
 // ==================== EXISTING ENDPOINTS ====================
 
@@ -549,7 +767,7 @@ app.delete("/delete-meal/:id", async (req, res) => {
   }
 });
 
-// Enhanced Checkout (Calendar-Based)
+// Enhanced Checkout (Calendar-Based) - FIXED
 app.post("/checkout", async (req, res) => {
   try {
     const { email, orders } = req.body;
@@ -590,7 +808,7 @@ app.post("/checkout", async (req, res) => {
     for (const key in ordersByDateBatch) {
       const { date, batch, meals } = ordersByDateBatch[key];
       
-      // Get count of tokens for this date and batch to generate unique token number
+      // FIXED: Get count of tokens for this specific date AND batch combination
       const tokenCount = await Token.countDocuments({ date, batch });
       const newToken = (tokenCount + 1).toString();
 
@@ -1048,9 +1266,6 @@ function broadcastRatingUpdate(mealName, avgRating, totalRatings) {
   });
 }
 
-
-    
-
 // Serve HTML files
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
@@ -1088,5 +1303,5 @@ app.listen(PORT, () => {
   console.log("🔔 Push notifications enabled");
   console.log("📅 Calendar-based ordering system active");
   console.log("✏️ Token editing feature enabled");
-  console.log("🎫 Unique tokens per date & batch");
+  console.log("🎫 Fixed: Unique tokens per date & batch (not globally unique)");
 });
