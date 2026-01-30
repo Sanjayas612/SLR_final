@@ -1,4 +1,4 @@
-// server.js - Complete version with immediate token generation (NO scheduled generation)
+// server.js - Fixed version with proper token generation
 const express = require("express");
 require("dotenv").config();
 const mongoose = require("mongoose");
@@ -72,8 +72,9 @@ mongoose.connect(mongoURI, {
 }).then(async () => {
   console.log("✅ MongoDB Connected Successfully");
   
-  // Drop the old problematic index if it exists
+  // Drop old indexes if they exist
   try {
+    const Token = mongoose.model('Token');
     await Token.collection.dropIndex('token_1');
     console.log("✅ Dropped old token index");
   } catch (err) {
@@ -152,7 +153,7 @@ const mealSchema = new mongoose.Schema({
 
 const Meal = mongoose.model("Meal", mealSchema);
 
-// Token Schema
+// Token Schema with compound unique index
 const tokenSchema = new mongoose.Schema({
   token: { type: String, required: true },
   date: { type: String, required: true }, // ISO date string (YYYY-MM-DD)
@@ -182,8 +183,8 @@ const tokenSchema = new mongoose.Schema({
   }
 });
 
-// Compound unique index on token + date + batch
-tokenSchema.index({ token: 1, date: 1, batch: 1 }, { unique: true });
+// Compound unique index on date, batch, and userEmail (one token per user per date per batch)
+tokenSchema.index({ date: 1, batch: 1, userEmail: 1 }, { unique: true });
 
 const Token = mongoose.model("Token", tokenSchema);
 
@@ -207,7 +208,6 @@ let producerSSEClients = [];
 
 // ==================== PUSH NOTIFICATION FUNCTIONS ====================
 
-// Save push subscription
 app.post('/subscribe', async (req, res) => {
   try {
     const { email, subscription } = req.body;
@@ -232,12 +232,10 @@ app.post('/subscribe', async (req, res) => {
   }
 });
 
-// Get VAPID public key
 app.get('/vapid-public-key', (req, res) => {
   res.json({ publicKey: VAPID_PUBLIC_KEY });
 });
 
-// Send push notification to a user
 async function sendPushNotification(userEmail, payload) {
   try {
     const user = await User.findOne({ email: userEmail });
@@ -299,27 +297,22 @@ async function sendPushNotification(userEmail, payload) {
 
 // ==================== NOTIFICATION ENDPOINTS ====================
 
-// Get notification stats
 app.get('/producer/notification-stats', async (req, res) => {
   try {
     const today = new Date().toISOString().split('T')[0];
     
-    // Get all students
     const allStudents = await User.find({ role: 'student' });
     const subscribedStudents = allStudents.filter(u => u.pushSubscription).length;
     
-    // Get today's notifications
     const todayNotifications = await NotificationLog.find({
       sentAt: { $gte: new Date(today) }
     });
     
-    // Calculate targeting
     let noOrderToday = 0;
     let notVerified = 0;
     let alreadyVerified = 0;
     
     for (const student of allStudents) {
-      // Check if they have an order for today
       const todayOrder = student.orders.find(o => o.orderDate === today);
       
       if (!todayOrder) {
@@ -327,7 +320,6 @@ app.get('/producer/notification-stats', async (req, res) => {
         continue;
       }
       
-      // Check if verified
       if (student.verifiedToday && student.verifiedToday.date === today && student.verifiedToday.verified) {
         alreadyVerified++;
       } else {
@@ -360,7 +352,6 @@ app.get('/producer/notification-stats', async (req, res) => {
   }
 });
 
-// Get recent notifications
 app.get('/producer/recent-notifications', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10;
@@ -374,7 +365,6 @@ app.get('/producer/recent-notifications', async (req, res) => {
   }
 });
 
-// Send reminders
 app.post('/producer/send-reminders', async (req, res) => {
   try {
     const { producerEmail, message } = req.body;
@@ -392,13 +382,11 @@ app.post('/producer/send-reminders', async (req, res) => {
     };
     
     for (const student of students) {
-      // Skip if no push subscription
       if (!student.pushSubscription) {
         skipped++;
         continue;
       }
       
-      // Check if they have an order for today
       const todayOrder = student.orders.find(o => o.orderDate === today);
       
       let shouldNotify = false;
@@ -407,21 +395,17 @@ app.post('/producer/send-reminders', async (req, res) => {
       let notificationBody = '';
       
       if (!todayOrder) {
-        // No order for today - send reminder to order
         shouldNotify = true;
         reason = 'no_order_today';
         notificationTitle = '🍽️ Don\'t Forget to Order!';
         notificationBody = message || 'You haven\'t ordered your meal for today. Place your order now!';
         breakdown.noOrder++;
       } else {
-        // Has order - check if verified
         if (student.verifiedToday && student.verifiedToday.date === today && student.verifiedToday.verified) {
-          // Already verified - skip
           skipped++;
           breakdown.alreadyVerified++;
           continue;
         } else {
-          // Not verified - send payment reminder
           shouldNotify = true;
           reason = 'not_verified';
           notificationTitle = '⏰ Payment Reminder';
@@ -447,7 +431,6 @@ app.post('/producer/send-reminders', async (req, res) => {
       }
     }
     
-    // Broadcast to producer SSE clients
     const sseData = {
       type: 'reminder_sent',
       results: {
@@ -484,7 +467,6 @@ app.post('/producer/send-reminders', async (req, res) => {
   }
 });
 
-// Producer SSE endpoint
 app.get('/producer/sse', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -494,7 +476,6 @@ app.get('/producer/sse', (req, res) => {
   producerSSEClients.push(res);
   console.log('Producer client connected to SSE');
 
-  // Send initial connection message
   res.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
 
   req.on('close', () => {
@@ -505,7 +486,6 @@ app.get('/producer/sse', (req, res) => {
 
 // ==================== EXISTING ENDPOINTS ====================
 
-// Initialize meals
 async function initMeals() {
   const count = await Meal.countDocuments();
   if (count === 0) {
@@ -521,7 +501,6 @@ async function initMeals() {
   }
 }
 
-// Google OAuth
 app.post("/auth/google", async (req, res) => {
   try {
     const { token } = req.body;
@@ -557,7 +536,6 @@ app.post("/auth/google", async (req, res) => {
   }
 });
 
-// Regular signup
 app.post("/signup", async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
@@ -587,7 +565,6 @@ app.post("/signup", async (req, res) => {
   }
 });
 
-// Login
 app.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -614,7 +591,6 @@ app.post("/login", async (req, res) => {
   }
 });
 
-// Get user profile
 app.get("/user/:email", async (req, res) => {
   try {
     const user = await User.findOne({ email: req.params.email });
@@ -634,7 +610,6 @@ app.get("/user/:email", async (req, res) => {
   }
 });
 
-// Complete profile
 app.post("/complete-profile", uploadProfile.single('profilePhoto'), async (req, res) => {
   try {
     const { email } = req.body;
@@ -668,7 +643,6 @@ app.post("/complete-profile", uploadProfile.single('profilePhoto'), async (req, 
   }
 });
 
-// Get meals
 app.get("/meals", async (req, res) => {
   try {
     const meals = await Meal.find({});
@@ -678,7 +652,6 @@ app.get("/meals", async (req, res) => {
   }
 });
 
-// Add meal
 app.post("/add-meal", uploadMeal.single('image'), async (req, res) => {
   try {
     const { name, price, description } = req.body;
@@ -707,7 +680,6 @@ app.post("/add-meal", uploadMeal.single('image'), async (req, res) => {
   }
 });
 
-// Update meal
 app.put("/update-meal/:id", uploadMeal.single('image'), async (req, res) => {
   try {
     const { name, price, description } = req.body;
@@ -741,7 +713,6 @@ app.put("/update-meal/:id", uploadMeal.single('image'), async (req, res) => {
   }
 });
 
-// Delete meal
 app.delete("/delete-meal/:id", async (req, res) => {
   try {
     const meal = await Meal.findById(req.params.id);
@@ -765,7 +736,7 @@ app.delete("/delete-meal/:id", async (req, res) => {
   }
 });
 
-// ==================== CHECKOUT ENDPOINT - IMMEDIATE TOKEN GENERATION ====================
+// ==================== FIXED CHECKOUT ENDPOINT - IMMEDIATE TOKEN GENERATION ====================
 app.post("/checkout", async (req, res) => {
   try {
     const { email, orders } = req.body;
@@ -813,7 +784,7 @@ app.post("/checkout", async (req, res) => {
       
       let tokenDoc = null;
       
-      // Check if token already exists
+      // Check if token already exists for this user, date, and batch
       tokenDoc = await Token.findOne({ date: orderDate, batch, userEmail: email });
       
       if (!tokenDoc) {
@@ -826,15 +797,16 @@ app.post("/checkout", async (req, res) => {
 
         const totalAmount = mealArray.reduce((sum, m) => sum + (m.price * m.quantity), 0);
 
-        // Count existing tokens for this date and batch
+        // CRITICAL FIX: Count ALL tokens for this date and batch (not just for this user)
+        // This ensures sequential token numbering across all users
         const tokenCount = await Token.countDocuments({ 
           date: orderDate, 
           batch
         });
-        const newToken = (tokenCount + 1).toString();
+        const newTokenNumber = (tokenCount + 1).toString();
 
         tokenDoc = new Token({
-          token: newToken,
+          token: newTokenNumber,
           date: orderDate,
           batch,
           userEmail: email,
@@ -847,7 +819,7 @@ app.post("/checkout", async (req, res) => {
         });
 
         await tokenDoc.save();
-        console.log(`✅ Generated token #${newToken} for ${orderDate}, Batch ${batch}`);
+        console.log(`✅ Generated token #${newTokenNumber} for ${orderDate}, Batch ${batch}, User: ${email}`);
       } else {
         // Token exists - update meals
         const mealArray = Object.entries(meals).map(([name, data]) => ({
@@ -859,7 +831,7 @@ app.post("/checkout", async (req, res) => {
         tokenDoc.meals = mealArray;
         tokenDoc.totalAmount = mealArray.reduce((sum, m) => sum + (m.price * m.quantity), 0);
         await tokenDoc.save();
-        console.log(`✅ Updated existing token #${tokenDoc.token} for ${orderDate}, Batch ${batch}`);
+        console.log(`✅ Updated existing token #${tokenDoc.token} for ${orderDate}, Batch ${batch}, User: ${email}`);
       }
       
       tokens.push({
@@ -909,7 +881,6 @@ app.post("/checkout", async (req, res) => {
   }
 });
 
-// Get user tokens
 app.get("/user-tokens/:email", async (req, res) => {
   try {
     const tokens = await Token.find({ userEmail: req.params.email }).sort({ date: -1, batch: 1 });
@@ -919,7 +890,6 @@ app.get("/user-tokens/:email", async (req, res) => {
   }
 });
 
-// Get token details
 app.get("/token-details/:id", async (req, res) => {
   try {
     const token = await Token.findById(req.params.id);
@@ -934,7 +904,6 @@ app.get("/token-details/:id", async (req, res) => {
   }
 });
 
-// Update token
 app.put("/update-token/:id", async (req, res) => {
   try {
     const { meals } = req.body;
@@ -992,7 +961,6 @@ app.put("/update-token/:id", async (req, res) => {
   }
 });
 
-// Get token by token number
 app.get("/token/:token", async (req, res) => {
   try {
     const today = new Date().toISOString().split('T')[0];
@@ -1024,7 +992,6 @@ app.get("/token/:token", async (req, res) => {
   }
 });
 
-// Verify token payment
 app.post("/verify-token-payment", async (req, res) => {
   try {
     const { token } = req.body;
@@ -1064,7 +1031,6 @@ app.post("/verify-token-payment", async (req, res) => {
   }
 });
 
-// QR scan verification
 app.post("/verify-qr", async (req, res) => {
   try {
     const { userEmail, date } = req.body;
@@ -1128,7 +1094,6 @@ app.post("/verify-qr", async (req, res) => {
   }
 });
 
-// Check if verified
 app.post("/check-verified", async (req, res) => {
   try {
     const { userEmail, date } = req.body;
@@ -1148,7 +1113,6 @@ app.post("/check-verified", async (req, res) => {
   }
 });
 
-// Get user orders
 app.get("/orders/:email", async (req, res) => {
   try {
     const user = await User.findOne({ email: req.params.email });
@@ -1161,7 +1125,6 @@ app.get("/orders/:email", async (req, res) => {
   }
 });
 
-// Rate meal
 app.post("/rate", async (req, res) => {
   try {
     const { mealName, rating, email } = req.body;
@@ -1192,7 +1155,6 @@ app.post("/rate", async (req, res) => {
   }
 });
 
-// Get meal details
 app.get("/meal/:name", async (req, res) => {
   try {
     const meal = await Meal.findOne({ name: req.params.name });
@@ -1215,7 +1177,6 @@ app.get("/meal/:name", async (req, res) => {
   }
 });
 
-// Producer stats
 app.get("/producer/stats", async (req, res) => {
   try {
     const { period = 'day' } = req.query;
@@ -1270,7 +1231,6 @@ app.get("/producer/stats", async (req, res) => {
   }
 });
 
-// SSE for ratings
 app.get("/sse-ratings", (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -1297,7 +1257,6 @@ function broadcastRatingUpdate(mealName, avgRating, totalRatings) {
   });
 }
 
-// Serve HTML files
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
@@ -1318,13 +1277,11 @@ app.get("/dashboard4", (req, res) => {
   res.sendFile(path.join(__dirname, "dashboard4.html"));
 });
 
-// Error handler
 app.use((err, req, res, next) => {
   console.error("Server error:", err);
   res.status(500).json({ success: false, error: "Server error" });
 });
 
-// Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
@@ -1335,4 +1292,5 @@ app.listen(PORT, () => {
   console.log("📅 Calendar-based ordering system active");
   console.log("✏️ Token editing feature enabled");
   console.log("🎫 All tokens generated immediately at checkout");
+  console.log("🔢 Sequential token numbering enabled");
 });
