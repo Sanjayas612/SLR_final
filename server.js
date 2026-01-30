@@ -1,4 +1,4 @@
-// server.js - Fixed version with proper token generation
+// server.js - Fixed Token Generation & Verification
 const express = require("express");
 require("dotenv").config();
 const mongoose = require("mongoose");
@@ -72,13 +72,12 @@ mongoose.connect(mongoURI, {
 }).then(async () => {
   console.log("✅ MongoDB Connected Successfully");
   
-  // Drop old indexes if they exist
   try {
     const Token = mongoose.model('Token');
     await Token.collection.dropIndex('token_1');
     console.log("✅ Dropped old token index");
   } catch (err) {
-    // Index might not exist, that's okay
+    // Index might not exist
   }
   
   initMeals();
@@ -87,7 +86,7 @@ mongoose.connect(mongoURI, {
   process.exit(1);
 });
 
-// Updated User Schema with Push Subscription
+// User Schema
 const userSchema = new mongoose.Schema({
   name: String,
   email: { type: String, unique: true },
@@ -113,7 +112,7 @@ const userSchema = new mongoose.Schema({
     mealName: String,
     price: Number,
     date: { type: Date, default: Date.now },
-    orderDate: String, // ISO date string for the actual order date
+    orderDate: String,
     paid: { type: Boolean, default: false },
     token: String,
     batch: Number
@@ -153,14 +152,14 @@ const mealSchema = new mongoose.Schema({
 
 const Meal = mongoose.model("Meal", mealSchema);
 
-// Token Schema with compound unique index
+// Token Schema
 const tokenSchema = new mongoose.Schema({
   token: { type: String, required: true },
-  date: { type: String, required: true }, // ISO date string (YYYY-MM-DD)
+  date: { type: String, required: true },
   userEmail: { type: String, required: true },
   userName: { type: String, required: true },
   userPhoto: String,
-  batch: { type: Number, required: true }, // 1 or 2
+  batch: { type: Number, required: true },
   meals: [{
     name: String,
     quantity: Number,
@@ -183,7 +182,6 @@ const tokenSchema = new mongoose.Schema({
   }
 });
 
-// Compound unique index on date, batch, and userEmail (one token per user per date per batch)
 tokenSchema.index({ date: 1, batch: 1, userEmail: 1 }, { unique: true });
 
 const Token = mongoose.model("Token", tokenSchema);
@@ -202,11 +200,26 @@ const notificationLogSchema = new mongoose.Schema({
 
 const NotificationLog = mongoose.model("NotificationLog", notificationLogSchema);
 
-// SSE connections
 let sseClients = [];
 let producerSSEClients = [];
 
-// ==================== PUSH NOTIFICATION FUNCTIONS ====================
+// ==================== HELPER FUNCTIONS ====================
+
+function getTodayDateString() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getExpiryTime(dateString) {
+  // Set expiry to 11:59:59 PM of the given date
+  const date = new Date(dateString + 'T23:59:59');
+  return date;
+}
+
+// ==================== PUSH NOTIFICATIONS ====================
 
 app.post('/subscribe', async (req, res) => {
   try {
@@ -299,7 +312,7 @@ async function sendPushNotification(userEmail, payload) {
 
 app.get('/producer/notification-stats', async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayDateString();
     
     const allStudents = await User.find({ role: 'student' });
     const subscribedStudents = allStudents.filter(u => u.pushSubscription).length;
@@ -368,7 +381,7 @@ app.get('/producer/recent-notifications', async (req, res) => {
 app.post('/producer/send-reminders', async (req, res) => {
   try {
     const { producerEmail, message } = req.body;
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayDateString();
     
     const students = await User.find({ role: 'student' });
     
@@ -484,7 +497,7 @@ app.get('/producer/sse', (req, res) => {
   });
 });
 
-// ==================== EXISTING ENDPOINTS ====================
+// ==================== AUTH ENDPOINTS ====================
 
 async function initMeals() {
   const count = await Meal.countDocuments();
@@ -643,6 +656,8 @@ app.post("/complete-profile", uploadProfile.single('profilePhoto'), async (req, 
   }
 });
 
+// ==================== MEAL ENDPOINTS ====================
+
 app.get("/meals", async (req, res) => {
   try {
     const meals = await Meal.find({});
@@ -736,7 +751,8 @@ app.delete("/delete-meal/:id", async (req, res) => {
   }
 });
 
-// ==================== FIXED CHECKOUT ENDPOINT - IMMEDIATE TOKEN GENERATION ====================
+// ==================== CHECKOUT & TOKEN GENERATION ====================
+
 app.post("/checkout", async (req, res) => {
   try {
     const { email, orders } = req.body;
@@ -750,45 +766,49 @@ app.post("/checkout", async (req, res) => {
       return res.json({ success: false, error: "User not found" });
     }
 
-    // Group orders by date and batch
-    const ordersByDateBatch = {};
+    const today = getTodayDateString();
+
+    // CRITICAL: Only allow ordering for today
+    const invalidOrders = orders.filter(order => order.date !== today);
+    if (invalidOrders.length > 0) {
+      return res.json({ success: false, error: "You can only order for today" });
+    }
+
+    // Group orders by batch
+    const ordersByBatch = {};
     
     orders.forEach(order => {
-      const key = `${order.date}_${order.batch}`;
-      if (!ordersByDateBatch[key]) {
-        ordersByDateBatch[key] = {
-          date: order.date,
+      const key = `${order.batch}`;
+      if (!ordersByBatch[key]) {
+        ordersByBatch[key] = {
           batch: order.batch,
           meals: {}
         };
       }
       
-      if (!ordersByDateBatch[key].meals[order.mealName]) {
-        ordersByDateBatch[key].meals[order.mealName] = {
+      if (!ordersByBatch[key].meals[order.mealName]) {
+        ordersByBatch[key].meals[order.mealName] = {
           quantity: 0,
           price: order.price
         };
       }
-      ordersByDateBatch[key].meals[order.mealName].quantity++;
+      ordersByBatch[key].meals[order.mealName].quantity++;
     });
 
     const tokens = [];
 
-    for (const key in ordersByDateBatch) {
-      const { date, batch, meals } = ordersByDateBatch[key];
+    for (const key in ordersByBatch) {
+      const { batch, meals } = ordersByBatch[key];
       
-      // Normalize date to YYYY-MM-DD format
-      const orderDate = new Date(date).toISOString().split('T')[0];
-      
-      console.log(`📅 Processing order for date: ${orderDate}, batch: ${batch}`);
+      console.log(`📅 Processing order for today: ${today}, batch: ${batch}`);
       
       let tokenDoc = null;
       
-      // Check if token already exists for this user, date, and batch
-      tokenDoc = await Token.findOne({ date: orderDate, batch, userEmail: email });
+      // Check if token already exists
+      tokenDoc = await Token.findOne({ date: today, batch, userEmail: email });
       
       if (!tokenDoc) {
-        // Create new token - ALWAYS generate actual token number immediately
+        // Create new token
         const mealArray = Object.entries(meals).map(([name, data]) => ({
           name,
           quantity: data.quantity,
@@ -797,17 +817,19 @@ app.post("/checkout", async (req, res) => {
 
         const totalAmount = mealArray.reduce((sum, m) => sum + (m.price * m.quantity), 0);
 
-        // CRITICAL FIX: Count ALL tokens for this date and batch (not just for this user)
-        // This ensures sequential token numbering across all users
+        // Generate sequential token number
         const tokenCount = await Token.countDocuments({ 
-          date: orderDate, 
+          date: today, 
           batch
         });
         const newTokenNumber = (tokenCount + 1).toString();
 
+        // Set expiry to 11:59:59 PM today
+        const expiryTime = getExpiryTime(today);
+
         tokenDoc = new Token({
           token: newTokenNumber,
-          date: orderDate,
+          date: today,
           batch,
           userEmail: email,
           userName: user.name,
@@ -815,13 +837,14 @@ app.post("/checkout", async (req, res) => {
           meals: mealArray,
           totalAmount,
           paid: true,
-          verified: false
+          verified: false,
+          expiresAt: expiryTime
         });
 
         await tokenDoc.save();
-        console.log(`✅ Generated token #${newTokenNumber} for ${orderDate}, Batch ${batch}, User: ${email}`);
+        console.log(`✅ Generated token #${newTokenNumber} for ${today}, Batch ${batch}, Expires: ${expiryTime}`);
       } else {
-        // Token exists - update meals
+        // Update existing token
         const mealArray = Object.entries(meals).map(([name, data]) => ({
           name,
           quantity: data.quantity,
@@ -830,8 +853,9 @@ app.post("/checkout", async (req, res) => {
 
         tokenDoc.meals = mealArray;
         tokenDoc.totalAmount = mealArray.reduce((sum, m) => sum + (m.price * m.quantity), 0);
+        tokenDoc.expiresAt = getExpiryTime(today);
         await tokenDoc.save();
-        console.log(`✅ Updated existing token #${tokenDoc.token} for ${orderDate}, Batch ${batch}, User: ${email}`);
+        console.log(`✅ Updated existing token #${tokenDoc.token}`);
       }
       
       tokens.push({
@@ -839,11 +863,12 @@ app.post("/checkout", async (req, res) => {
         date: tokenDoc.date,
         batch: tokenDoc.batch,
         meals: tokenDoc.meals,
-        totalAmount: tokenDoc.totalAmount
+        totalAmount: tokenDoc.totalAmount,
+        expiresAt: tokenDoc.expiresAt
       });
 
-      // Add to user orders (clear old orders for this date/batch first)
-      user.orders = user.orders.filter(o => !(o.orderDate === orderDate && o.batch === batch));
+      // Update user orders
+      user.orders = user.orders.filter(o => !(o.orderDate === today && o.batch === batch));
       
       tokenDoc.meals.forEach(meal => {
         for (let i = 0; i < meal.quantity; i++) {
@@ -851,7 +876,7 @@ app.post("/checkout", async (req, res) => {
             mealName: meal.name,
             price: meal.price,
             date: new Date(),
-            orderDate: orderDate,
+            orderDate: today,
             paid: true,
             batch: batch,
             token: tokenDoc.token
@@ -862,13 +887,11 @@ app.post("/checkout", async (req, res) => {
 
     await user.save();
 
-    // Send order confirmation notification
+    // Send notification
     const tokenNumbers = tokens.map(t => `#${t.token}`).join(', ');
-    const notificationBody = `Your token(s) are ready: ${tokenNumbers}. Total: ${tokens.length} order(s).`;
-
     await sendPushNotification(email, {
       title: '✅ Order Confirmed!',
-      body: notificationBody,
+      body: `Your token(s): ${tokenNumbers}. Total: ${tokens.length} order(s).`,
       type: 'order_update',
       reason: 'order_placed',
       data: { url: '/dashboard' }
@@ -880,6 +903,8 @@ app.post("/checkout", async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+// ==================== TOKEN ENDPOINTS ====================
 
 app.get("/user-tokens/:email", async (req, res) => {
   try {
@@ -917,13 +942,9 @@ app.put("/update-token/:id", async (req, res) => {
       return res.json({ success: false, error: "Cannot edit verified token" });
     }
 
-    // Check if token date is in the past
-    const tokenDate = new Date(token.date + 'T00:00:00');
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    if (tokenDate < today) {
-      return res.json({ success: false, error: "Cannot edit past tokens" });
+    const today = getTodayDateString();
+    if (token.date !== today) {
+      return res.json({ success: false, error: "Can only edit today's tokens" });
     }
 
     token.meals = meals;
@@ -933,10 +954,8 @@ app.put("/update-token/:id", async (req, res) => {
     // Update user orders
     const user = await User.findOne({ email: token.userEmail });
     if (user) {
-      // Remove old orders for this token
       user.orders = user.orders.filter(o => o.token !== token.token || o.orderDate !== token.date);
       
-      // Add updated orders
       meals.forEach(meal => {
         for (let i = 0; i < meal.quantity; i++) {
           user.orders.push({
@@ -963,7 +982,7 @@ app.put("/update-token/:id", async (req, res) => {
 
 app.get("/token/:token", async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayDateString();
     const tokenDoc = await Token.findOne({
       token: req.params.token,
       date: today
@@ -985,7 +1004,8 @@ app.get("/token/:token", async (req, res) => {
       paid: tokenDoc.paid,
       verified: tokenDoc.verified,
       verifiedAt: tokenDoc.verifiedAt,
-      date: tokenDoc.date
+      date: tokenDoc.date,
+      expiresAt: tokenDoc.expiresAt
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -995,7 +1015,7 @@ app.get("/token/:token", async (req, res) => {
 app.post("/verify-token-payment", async (req, res) => {
   try {
     const { token } = req.body;
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayDateString();
 
     const tokenDoc = await Token.findOne({ token, date: today });
     if (!tokenDoc) {
@@ -1074,7 +1094,6 @@ app.post("/verify-qr", async (req, res) => {
 
     await user.save();
 
-    // Mark all tokens for this date as verified
     await Token.updateMany(
       { userEmail, date },
       { verified: true, verifiedAt: new Date() }
@@ -1124,6 +1143,8 @@ app.get("/orders/:email", async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+// ==================== RATING ENDPOINTS ====================
 
 app.post("/rate", async (req, res) => {
   try {
@@ -1177,6 +1198,8 @@ app.get("/meal/:name", async (req, res) => {
   }
 });
 
+// ==================== PRODUCER STATS ====================
+
 app.get("/producer/stats", async (req, res) => {
   try {
     const { period = 'day' } = req.query;
@@ -1184,11 +1207,12 @@ app.get("/producer/stats", async (req, res) => {
     let allOrders = [];
     let verifiedCount = 0;
     
+    const today = getTodayDateString();
+    
     users.forEach(u => {
       allOrders.push(...(u.orders || []));
       if (u.verifiedToday && u.verifiedToday.verified) {
-        const todayStr = new Date().toISOString().split('T')[0];
-        if (u.verifiedToday.date === todayStr) {
+        if (u.verifiedToday.date === today) {
           verifiedCount += u.verifiedToday.meals.reduce((sum, m) => sum + m.quantity, 0);
         }
       }
@@ -1231,6 +1255,8 @@ app.get("/producer/stats", async (req, res) => {
   }
 });
 
+// ==================== SSE FOR RATINGS ====================
+
 app.get("/sse-ratings", (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -1256,6 +1282,8 @@ function broadcastRatingUpdate(mealName, avgRating, totalRatings) {
     }
   });
 }
+
+// ==================== ROUTES ====================
 
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
@@ -1289,8 +1317,7 @@ app.listen(PORT, () => {
   console.log("☁️ Cloudinary configured");
   console.log("🔐 Google OAuth configured");
   console.log("🔔 Push notifications enabled");
-  console.log("📅 Calendar-based ordering system active");
-  console.log("✏️ Token editing feature enabled");
-  console.log("🎫 All tokens generated immediately at checkout");
-  console.log("🔢 Sequential token numbering enabled");
+  console.log("📅 TODAY-ONLY ordering enabled");
+  console.log("⏰ Token expiry: 11:59 PM same day");
+  console.log("🎫 Sequential token numbering enabled");
 });
