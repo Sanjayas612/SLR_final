@@ -528,6 +528,31 @@ app.post("/api/library/save", async (req, res) => {
     }
 });
 
+// MODIFIED ADD-MEAL ROUTE: To handle Library Images
+app.post("/add-meal", uploadMeal.single('image'), async (req, res) => {
+  try {
+    const { name, price, description, libraryImage } = req.body;
+    if (!name || !price) return res.json({ success: false, error: "Name and price required" });
+
+    const exists = await Meal.findOne({ name });
+    if (exists) return res.json({ success: false, error: "Meal already exists" });
+
+    // If no new file is uploaded, use the libraryImage URL
+    const meal = new Meal({
+      name,
+      price: Number(price),
+      description,
+      image: req.file ? req.file.path : libraryImage, 
+      cloudinaryId: req.file ? req.file.filename : null
+    });
+
+    await meal.save();
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ==================== AUTH ENDPOINTS ====================
 
 async function initMeals() {
