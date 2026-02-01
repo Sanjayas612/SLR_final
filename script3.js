@@ -1,5 +1,5 @@
 let editingMealId = null;
-let libraryImageUrl = null; // Store the Cloudinary URL from library
+let libraryImageUrl = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     loadLibrary();
@@ -14,22 +14,24 @@ document.getElementById('image').addEventListener('change', function(e) {
         reader.onload = (e) => {
             document.getElementById('previewImg').src = e.target.result;
             document.getElementById('imagePreview').classList.remove('hidden');
-            libraryImageUrl = null; // New upload clears library image selection
+            libraryImageUrl = null;
         };
         reader.readAsDataURL(file);
     }
 });
 
 async function loadLibrary() {
-    const res = await fetch("/library");
-    const data = await res.json();
-    const container = document.getElementById('mealLibrary');
-    container.innerHTML = data.map(item => `
-        <div onclick='useLibraryItem(${JSON.stringify(item)})' class="cursor-pointer bg-slate-700/30 p-3 rounded-xl border border-slate-600 hover:border-indigo-500 transition-all flex items-center gap-4">
-            <img src="${item.image}" class="w-12 h-12 rounded-lg object-cover">
-            <div class="flex-1"><p class="font-bold text-sm">${item.name}</p><p class="text-xs text-emerald-400">₹${item.price}</p></div>
-            <i class="fas fa-plus-circle text-indigo-400"></i>
-        </div>`).join('');
+    try {
+        const res = await fetch("/library");
+        const data = await res.json();
+        const container = document.getElementById('mealLibrary');
+        container.innerHTML = data.map(item => `
+            <div onclick='useLibraryItem(${JSON.stringify(item)})' class="cursor-pointer bg-slate-700/30 p-3 rounded-xl border border-slate-600 hover:border-indigo-500 transition-all flex items-center gap-4">
+                <img src="${item.image}" class="w-12 h-12 rounded-lg object-cover">
+                <div class="flex-1"><p class="font-bold text-sm">${item.name}</p><p class="text-xs text-emerald-400">₹${item.price}</p></div>
+                <i class="fas fa-plus-circle text-indigo-400"></i>
+            </div>`).join('');
+    } catch (err) { console.error(err); }
 }
 
 function useLibraryItem(item) {
@@ -38,9 +40,61 @@ function useLibraryItem(item) {
     document.getElementById('description').value = item.description || '';
     document.getElementById('previewImg').src = item.image;
     document.getElementById('imagePreview').classList.remove('hidden');
-    libraryImageUrl = item.image; // Store Cloudinary URL
-    document.getElementById('image').value = ""; // Clear file selector
+    libraryImageUrl = item.image;
+    document.getElementById('image').value = "";
     window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Mobile Optimized Save to Library
+async function saveToLibrary() {
+    const name = document.getElementById('name').value.trim();
+    const price = document.getElementById('price').value.trim();
+    const description = document.getElementById('description').value.trim();
+    const file = document.getElementById('image').files[0];
+
+    if (!name || !price) return alert("Name and price required");
+
+    if (file) {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const scale = 400 / img.width;
+                canvas.width = 400;
+                canvas.height = img.height * scale;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                
+                const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+                sendLibraryData(name, price, description, compressedBase64);
+            };
+        };
+    } else if (libraryImageUrl) {
+        sendLibraryData(name, price, description, libraryImageUrl);
+    } else {
+        alert("Please choose an image");
+    }
+}
+
+async function sendLibraryData(name, price, description, imageData) {
+    try {
+        const res = await fetch("/api/library/save", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, price: Number(price), description, image: imageData })
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert("✅ Added to Library!");
+            loadLibrary();
+            resetForm();
+        }
+    } catch (err) {
+        alert("Error: Image might be too large for mobile data.");
+    }
 }
 
 async function saveMeal() {
@@ -55,14 +109,9 @@ async function saveMeal() {
     formData.append("price", price);
     formData.append("description", document.getElementById('description').value);
     
-    // IMAGE HANDLING: Send file if uploaded, otherwise send the library URL string
-    if (file) {
-        formData.append("image", file);
-    } else if (libraryImageUrl) {
-        formData.append("libraryImage", libraryImageUrl);
-    } else {
-        return alert("Image required");
-    }
+    if (file) { formData.append("image", file); } 
+    else if (libraryImageUrl) { formData.append("libraryImage", libraryImageUrl); } 
+    else { return alert("Image required"); }
 
     const url = editingMealId ? `/update-meal/${editingMealId}` : "/add-meal";
     const method = editingMealId ? "PUT" : "POST";
@@ -90,23 +139,6 @@ async function loadMeals() {
                 </div>
             </div>
         </div>`).join('');
-}
-
-async function saveToLibrary() {
-    const name = document.getElementById('name').value;
-    const price = document.getElementById('price').value;
-    const desc = document.getElementById('description').value;
-    const img = document.getElementById('previewImg').src;
-
-    if (!name || !price || !img) return alert("Choose image first");
-
-    await fetch("/api/library/save", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ name, price, description: desc, image: img })
-    });
-    loadLibrary();
-    alert("Template saved!");
 }
 
 function resetForm() {
