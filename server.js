@@ -497,6 +497,37 @@ app.get('/producer/sse', (req, res) => {
   });
 });
 
+// --- NEW LIBRARY SCHEMA ---
+const librarySchema = new mongoose.Schema({
+    name: { type: String, required: true },
+    price: { type: Number, required: true },
+    description: String,
+    image: String, // Stores the Cloudinary URL
+    createdAt: { type: Date, default: Date.now }
+});
+const Library = mongoose.model("Library", librarySchema);
+
+// --- NEW LIBRARY ROUTES ---
+app.get("/library", async (req, res) => {
+    try {
+        const items = await Library.find().sort({ name: 1 });
+        res.json(items);
+    } catch (err) {
+        res.status(500).json({ success: false, error: "Could not fetch library" });
+    }
+});
+
+app.post("/api/library/save", async (req, res) => {
+    try {
+        const { name, price, description, image } = req.body;
+        const newTemplate = new Library({ name, price, description, image });
+        await newTemplate.save();
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ success: false });
+    }
+});
+
 // ==================== AUTH ENDPOINTS ====================
 
 async function initMeals() {
