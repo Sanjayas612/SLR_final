@@ -8,709 +8,92 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <style>
-    /* Base Responsive Styles */
-    * {
-      -webkit-tap-highlight-color: transparent;
-    }
-    
-    .gradient-text {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-    
-    .modal-overlay { 
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-    }
-    
-    .token-pass {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      border-radius: 20px;
-      padding: 20px;
-      box-shadow: 0 20px 60px rgba(102, 126, 234, 0.4);
-    }
-    
-    .profile-img {
-      width: 80px;
-      height: 80px;
-      border-radius: 50%;
-      object-fit: cover;
-      border: 4px solid white;
-    }
-    
-    .meal-card {
-      transition: all 0.3s ease;
-    }
-    
-    .meal-card:hover {
-      transform: translateY(-4px);
-    }
-    
-    .line-clamp-3 {
-      display: -webkit-box;
-      -webkit-line-clamp: 3;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-    }
-    
-    #cameraContainer {
-      width: 150px;
-      height: 150px;
-      margin: 0 auto 1.5rem;
-      border-radius: 50%;
-      overflow: hidden;
-      border: 4px solid #6366f1;
-      display: none;
-      position: relative;
-    }
-    
-    #cameraStream {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-    
-    .initials-avatar {
-      width: 40px;
-      height: 40px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #4f46e5;
-      color: white;
-      font-weight: bold;
-      font-size: 1rem;
-      border-radius: 50%;
-      border: 2px solid rgba(255,255,255,0.1);
-    }
-    
-    .cart-badge {
-      position: absolute;
-      top: -8px;
-      right: -8px;
-      background: #ef4444;
-      color: white;
-      border-radius: 50%;
-      min-width: 20px;
-      height: 20px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 0.7rem;
-      font-weight: bold;
-      padding: 0 4px;
-    }
-    
+    * { -webkit-tap-highlight-color: transparent; }
+    .gradient-text { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .modal-overlay { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+    .token-pass { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 20px; padding: 20px; box-shadow: 0 20px 60px rgba(102, 126, 234, 0.4); }
+    .profile-img { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 4px solid white; }
+    .meal-card { transition: all 0.3s ease; }
+    .meal-card:hover { transform: translateY(-4px); }
+    #cameraContainer { width: 150px; height: 150px; margin: 0 auto 1.5rem; border-radius: 50%; overflow: hidden; border: 4px solid #6366f1; display: none; position: relative; }
+    #cameraStream { width: 100%; height: 100%; object-fit: cover; }
+    .initials-avatar { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; background: #4f46e5; color: white; font-weight: bold; font-size: 1rem; border-radius: 50%; border: 2px solid rgba(255,255,255,0.1); }
+    .cart-badge { position: absolute; top: -8px; right: -8px; background: #ef4444; color: white; border-radius: 50%; min-width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: bold; padding: 0 4px; }
     ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
-    
-    /* Calendar Styles - Responsive */
-    .calendar-grid {
-      display: grid;
-      grid-template-columns: repeat(7, 1fr);
-      gap: 4px;
-    }
-    
-    .calendar-day {
-      aspect-ratio: 1;
-      border: 2px solid #475569;
-      border-radius: 8px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      background: rgba(51, 65, 85, 0.3);
-      position: relative;
-      min-height: 50px;
-    }
-    
-    .calendar-day:hover:not(.disabled) {
-      background: rgba(99, 102, 241, 0.2);
-      border-color: #6366f1;
-      transform: scale(1.05);
-    }
-    
-    .calendar-day.selected {
-      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-      border-color: #8b5cf6;
-      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.5);
-    }
-    
-    .calendar-day.disabled {
-      opacity: 0.3;
-      cursor: not-allowed;
-      background: rgba(30, 41, 59, 0.3);
-    }
-    
-    .calendar-day.today {
-      border-color: #10b981;
-      border-width: 3px;
-    }
-    
-    .day-number {
-      font-size: 1rem;
-      font-weight: bold;
-    }
-    
-    .day-name {
-      font-size: 0.55rem;
-      text-transform: uppercase;
-      color: #94a3b8;
-      margin-top: 2px;
-    }
-    
-    .batch-selector {
-      background: rgba(51, 65, 85, 0.5);
-      border: 2px solid #475569;
-      border-radius: 12px;
-      padding: 12px;
-      margin-top: 12px;
-    }
-    
-    .batch-option {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 12px;
-      background: rgba(71, 85, 105, 0.3);
-      border: 2px solid transparent;
-      border-radius: 10px;
-      cursor: pointer;
-      transition: all 0.3s ease;
-    }
-    
-    .batch-option:hover {
-      background: rgba(99, 102, 241, 0.2);
-      border-color: #6366f1;
-    }
-    
-    .batch-option.selected {
-      background: rgba(99, 102, 241, 0.3);
-      border-color: #6366f1;
-    }
-    
-    .batch-radio {
-      width: 18px;
-      height: 18px;
-      accent-color: #6366f1;
-      flex-shrink: 0;
-    }
-    
-    .calendar-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 16px;
-      padding: 12px;
-      background: rgba(51, 65, 85, 0.3);
-      border-radius: 12px;
-      gap: 8px;
-    }
-    
-    .month-nav-btn {
-      background: rgba(99, 102, 241, 0.2);
-      border: 2px solid #6366f1;
-      color: white;
-      padding: 8px 12px;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      flex-shrink: 0;
-    }
-    
-    .month-nav-btn:hover {
-      background: rgba(99, 102, 241, 0.4);
-      transform: scale(1.05);
-    }
-    
-    .token-item {
-      background: rgba(51, 65, 85, 0.5);
-      border: 2px solid #475569;
-      border-radius: 12px;
-      padding: 12px;
-      margin-bottom: 12px;
-      transition: all 0.3s ease;
-    }
-    
-    .token-item:hover {
-      border-color: #6366f1;
-      background: rgba(51, 65, 85, 0.7);
-    }
-
-    /* Mobile-specific adjustments */
-    @media (max-width: 640px) {
-      .profile-img {
-        width: 60px;
-        height: 60px;
-      }
-      
-      #cameraContainer {
-        width: 120px;
-        height: 120px;
-      }
-      
-      .initials-avatar {
-        width: 36px;
-        height: 36px;
-        font-size: 0.9rem;
-      }
-      
-      .calendar-day {
-        min-height: 40px;
-        border-radius: 6px;
-      }
-      
-      .day-number {
-        font-size: 0.9rem;
-      }
-      
-      .day-name {
-        font-size: 0.5rem;
-      }
-      
-      .calendar-grid {
-        gap: 3px;
-      }
-      
-      .token-pass {
-        padding: 16px;
-      }
-      
-      .cart-badge {
-        min-width: 18px;
-        height: 18px;
-        font-size: 0.65rem;
-      }
-    }
-    
-    @media (max-width: 480px) {
-      .calendar-day {
-        min-height: 35px;
-        border-width: 1px;
-      }
-      
-      .day-number {
-        font-size: 0.8rem;
-      }
-      
-      .day-name {
-        display: none;
-      }
-    }
-
-    /* Tablet adjustments */
-    @media (min-width: 641px) and (max-width: 1024px) {
-      .profile-img {
-        width: 100px;
-        height: 100px;
-      }
-      
-      .calendar-day {
-        min-height: 60px;
-      }
-    }
-
-    /* Prevent zoom on input focus (iOS) */
-    input[type="text"],
-    input[type="email"],
-    input[type="password"],
-    textarea,
-    select {
-      font-size: 16px !important;
-    }
-
-    /* Safe area for notched devices */
-    @supports (padding: max(0px)) {
-      body {
-        padding-left: max(0px, env(safe-area-inset-left));
-        padding-right: max(0px, env(safe-area-inset-right));
-      }
-    }
-
-    /* Modal responsiveness */
-    .modal-content {
-      max-height: 90vh;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-
-    /* Touch-friendly button sizes */
-    button, .batch-option {
-      min-height: 44px;
-      min-width: 44px;
-    }
+    .peer:checked + .choice-design { border-color: #6366f1; background: rgba(99, 102, 241, 0.15); }
   </style>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 text-white">
   
-  <!-- Profile Setup Modal -->
-  <div id="profileSetupModal" class="fixed inset-0 bg-black/80 modal-overlay flex items-center justify-center z-50 hidden p-4">
-    <div class="bg-slate-800/95 backdrop-blur-sm rounded-2xl p-4 sm:p-6 md:p-8 max-w-md w-full border border-slate-700/50 modal-content">
-      <h3 class="text-2xl sm:text-3xl font-bold gradient-text mb-2 text-center">
-        <i class="fas fa-user-circle"></i> Complete Your Profile
-      </h3>
-      <p class="text-amber-400 text-xs font-bold mb-4 sm:mb-6 text-center">
-        <i class="fas fa-exclamation-triangle"></i> WARNING: Username cannot be changed once saved!
-      </p>
-      
-      <div class="mb-4 sm:mb-6 text-center">
-        <div class="inline-block relative">
-          <img id="previewPhoto" src="https://via.placeholder.com/120/667eea/ffffff?text=Photo" class="profile-img mb-4">
-          <div id="cameraContainer">
-            <video id="cameraStream" autoplay playsinline></video>
-          </div>
-          <div class="flex justify-center gap-2 sm:gap-3 mt-4">
-            <label for="photoInput" class="bg-indigo-600 hover:bg-indigo-700 p-2 sm:p-3 rounded-full cursor-pointer shadow-lg transition transform hover:scale-110" title="Upload Photo">
-              <i class="fas fa-upload text-sm sm:text-base"></i>
-            </label>
-            <button id="startCamera" class="bg-indigo-600 hover:bg-indigo-700 p-2 sm:p-3 rounded-full shadow-lg transition transform hover:scale-110" title="Start Camera">
-              <i class="fas fa-camera text-sm sm:text-base"></i>
-            </button>
-            <button id="capturePhoto" class="bg-emerald-600 hover:bg-emerald-700 p-2 sm:p-3 rounded-full shadow-lg transition hidden transform hover:scale-110" title="Capture Photo">
-              <i class="fas fa-check text-sm sm:text-base"></i>
-            </button>
-          </div>
-        </div>
-        <input type="file" id="photoInput" accept="image/*" class="hidden">
-      </div>
-      
-      <div class="mb-4 sm:mb-6">
-        <label class="block text-sm font-semibold text-slate-300 mb-2">
-          <i class="fas fa-user mr-2"></i> Full Name *
-        </label>
-        <input 
-          type="text" 
-          id="nameInput" 
-          placeholder="Enter your name"
-          class="w-full bg-slate-700/50 border border-slate-600 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500"
-        >
-      </div>
-      
-      <button id="saveProfileBtn" class="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 px-6 sm:px-8 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg text-sm sm:text-base">
-        <i class="fas fa-check mr-2"></i> Save & Continue
-      </button>
-      <button id="cancelSetup" class="w-full mt-4 text-slate-400 hover:text-white transition text-sm hidden">Cancel</button>
-    </div>
-  </div>
-
-  <!-- Cart Modal -->
-  <div id="cartModal" class="fixed inset-0 bg-black/80 modal-overlay flex items-center justify-center z-50 hidden p-2 sm:p-4">
-    <div class="bg-slate-800/95 backdrop-blur-sm rounded-2xl p-4 sm:p-6 md:p-8 max-w-5xl w-full border border-slate-700/50 modal-content">
-      <div class="flex justify-between items-center mb-4 sm:mb-6">
-        <h3 class="text-xl sm:text-2xl md:text-3xl font-bold gradient-text">
-          <i class="fas fa-shopping-cart"></i> Your Cart
-        </h3>
-        <button id="closeCart" class="text-3xl sm:text-4xl text-slate-400 hover:text-white transition">×</button>
+  <div id="addToCartModal" class="fixed inset-0 bg-black/80 modal-overlay flex items-center justify-center z-50 hidden p-4">
+    <div class="bg-slate-800/95 backdrop-blur-sm rounded-2xl p-6 md:p-8 max-w-md w-full border border-slate-700/50">
+      <div class="flex justify-between items-center mb-6">
+        <h3 class="text-2xl font-bold gradient-text"><i class="fas fa-calendar-check"></i> Book Your Meal</h3>
+        <button id="closeAddToCart" class="text-3xl text-slate-400 hover:text-white transition">×</button>
       </div>
 
-      <div id="cartContent" class="space-y-4 sm:space-y-6">
-        <!-- Cart items will be inserted here -->
-      </div>
+      <div id="selectedMealInfo" class="mb-6 bg-slate-700/50 p-4 rounded-xl border border-slate-600/50"></div>
 
-      <div class="mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-slate-700/50">
-        <div class="flex justify-between items-center text-xl sm:text-2xl font-bold mb-4 sm:mb-6">
-          <span>Total Amount:</span>
-          <span id="cartTotal" class="text-emerald-400">₹0</span>
-        </div>
-        <button id="proceedToCheckout" class="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 px-6 sm:px-8 py-3 sm:py-4 rounded-xl font-semibold text-base sm:text-lg transition-all duration-300 shadow-lg">
-          <i class="fas fa-credit-card mr-2"></i> Proceed to Checkout
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Add to Cart Modal (Calendar-Based Selection) -->
-  <div id="addToCartModal" class="fixed inset-0 bg-black/80 modal-overlay flex items-center justify-center z-50 hidden p-2 sm:p-4">
-    <div class="bg-slate-800/95 backdrop-blur-sm rounded-2xl p-4 sm:p-6 md:p-8 max-w-4xl w-full border border-slate-700/50 modal-content">
-      <div class="flex justify-between items-center mb-4 sm:mb-6">
-        <h3 class="text-xl sm:text-2xl md:text-3xl font-bold gradient-text">
-          <i class="fas fa-calendar-alt"></i> Plan Your Meals
-        </h3>
-        <button id="closeAddToCart" class="text-3xl sm:text-4xl text-slate-400 hover:text-white transition">×</button>
-      </div>
-
-      <div id="selectedMealInfo" class="mb-4 sm:mb-6 bg-slate-700/50 p-3 sm:p-4 rounded-xl border border-slate-600/50 text-sm sm:text-base">
-        <!-- Meal info will be inserted here -->
-      </div>
-
-      <div class="mb-4 sm:mb-6">
-        <div class="calendar-header">
-          <button id="prevMonth" class="month-nav-btn text-sm sm:text-base">
-            <i class="fas fa-chevron-left"></i>
-          </button>
-          <h4 id="currentMonth" class="text-lg sm:text-xl md:text-2xl font-bold text-white text-center flex-1"></h4>
-          <button id="nextMonth" class="month-nav-btn text-sm sm:text-base">
-            <i class="fas fa-chevron-right"></i>
-          </button>
-        </div>
-
-        <div class="calendar-grid mb-4 sm:mb-6" id="calendarGrid">
-          <!-- Calendar days will be inserted here -->
-        </div>
-
-        <div id="batchSelectionContainer" class="hidden">
-          <h4 class="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-indigo-200">
-            <i class="fas fa-clock mr-2"></i> Select Batch Time
-          </h4>
-          <div class="space-y-2 sm:space-y-3">
-            <label class="batch-option">
-              <input type="radio" name="batch-time" value="1" class="batch-radio">
-              <div class="flex-1">
-                <div class="font-semibold text-base sm:text-lg">Batch 1</div>
-                <div class="text-xs sm:text-sm text-slate-400">12:30 PM - 1:00 PM</div>
-              </div>
-            </label>
-            <label class="batch-option">
-              <input type="radio" name="batch-time" value="2" class="batch-radio">
-              <div class="flex-1">
-                <div class="font-semibold text-base sm:text-lg">Batch 2</div>
-                <div class="text-xs sm:text-sm text-slate-400">1:00 PM - 2:00 PM</div>
-              </div>
-            </label>
-          </div>
-        </div>
-      </div>
-
-      <div class="bg-indigo-900/30 border border-indigo-700/50 rounded-xl p-3 sm:p-4 mb-4 sm:mb-6">
-        <h5 class="font-semibold mb-2 text-indigo-200 text-sm sm:text-base">
-          <i class="fas fa-info-circle mr-2"></i> Selected Days:
-        </h5>
-        <div id="selectedDaysSummary" class="text-xs sm:text-sm text-slate-300">
-          No days selected yet
-        </div>
-      </div>
-
-      <div class="flex flex-col sm:flex-row gap-3 sm:gap-4">
-        <button id="addSelectedToCart" class="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 px-6 sm:px-8 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg text-sm sm:text-base">
-          <i class="fas fa-plus mr-2"></i> Add to Cart
-        </button>
-        <button id="cancelAddToCart" class="flex-1 bg-slate-600 hover:bg-slate-700 px-6 sm:px-8 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg text-sm sm:text-base">
-          <i class="fas fa-times mr-2"></i> Cancel
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- My Tokens Modal -->
-  <div id="myTokensModal" class="fixed inset-0 bg-black/80 modal-overlay flex items-center justify-center z-50 hidden p-2 sm:p-4">
-    <div class="bg-slate-800/95 backdrop-blur-sm rounded-2xl p-4 sm:p-6 md:p-8 max-w-4xl w-full border border-slate-700/50 modal-content">
-      <div class="flex justify-between items-center mb-4 sm:mb-6">
-        <h3 class="text-xl sm:text-2xl md:text-3xl font-bold gradient-text">
-          <i class="fas fa-ticket-alt"></i> My Tokens
-        </h3>
-        <button id="closeMyTokens" class="text-3xl sm:text-4xl text-slate-400 hover:text-white transition">×</button>
-      </div>
-
-      <div id="tokensList" class="space-y-3 sm:space-y-4">
-        <!-- Tokens will be listed here -->
-      </div>
-    </div>
-  </div>
-
-  <!-- Edit Token Modal -->
-  <div id="editTokenModal" class="fixed inset-0 bg-black/80 modal-overlay flex items-center justify-center z-50 hidden p-2 sm:p-4">
-    <div class="bg-slate-800/95 backdrop-blur-sm rounded-2xl p-4 sm:p-6 md:p-8 max-w-3xl w-full border border-slate-700/50 modal-content">
-      <div class="flex justify-between items-center mb-4 sm:mb-6">
-        <h3 class="text-xl sm:text-2xl md:text-3xl font-bold gradient-text">
-          <i class="fas fa-edit"></i> Edit Token
-        </h3>
-        <button id="closeEditToken" class="text-3xl sm:text-4xl text-slate-400 hover:text-white transition">×</button>
-      </div>
-
-      <div id="editTokenContent" class="space-y-4 sm:space-y-6">
-        <!-- Token edit content will be inserted here -->
-      </div>
-
-      <div class="flex flex-col sm:flex-row gap-3 sm:gap-4 mt-4 sm:mt-6">
-        <button id="saveTokenChanges" class="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 px-6 sm:px-8 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg text-sm sm:text-base">
-          <i class="fas fa-save mr-2"></i> Save Changes
-        </button>
-        <button id="cancelEditToken" class="flex-1 bg-slate-600 hover:bg-slate-700 px-6 sm:px-8 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg text-sm sm:text-base">
-          <i class="fas fa-times mr-2"></i> Cancel
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Token Pass Modal -->
-  <div id="tokenModal" class="fixed inset-0 bg-black/80 modal-overlay flex items-center justify-center z-50 hidden p-4">
-    <div class="token-pass max-w-md w-full mx-4 relative">
-      <button id="closeTokenModal" class="absolute top-2 sm:top-4 right-2 sm:right-4 text-white text-xl sm:text-2xl hover:text-red-300 transition">
-        <i class="fas fa-times"></i>
-      </button>
-
-      <h3 class="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6 text-center text-white">
-        <i class="fas fa-ticket-alt"></i> Your Token Pass
-      </h3>
-
-      <div class="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6 mb-4 sm:mb-6">
-        <img id="modalTokenPhoto" src="https://via.placeholder.com/120" class="profile-img">
-        <div class="text-center sm:text-left">
-          <p class="text-white/70 text-xs sm:text-sm mb-1">Student Name</p>
-          <p id="modalTokenName" class="text-white text-lg sm:text-xl font-bold">-</p>
-        </div>
-      </div>
-
-      <div class="bg-white/10 p-4 sm:p-6 rounded-xl text-center mb-4">
-        <p class="text-white/70 text-base sm:text-lg mb-2">Token Number</p>
-        <p id="modalTokenNumber" class="text-white text-4xl sm:text-6xl font-bold">-</p>
-      </div>
-
-      <div id="modalMealsList" class="bg-white/10 p-3 sm:p-4 rounded-xl hidden">
-        <h4 class="font-semibold mb-2 sm:mb-3 text-white text-sm sm:text-base">Your Meals:</h4>
-        <ul id="modalMealsItems" class="space-y-2 text-xs sm:text-sm text-white"></ul>
-      </div>
-
-      <p class="text-white/70 mt-4 text-center text-xs sm:text-sm">
-        <i class="fas fa-info-circle mr-2"></i> Valid for selected date
-      </p>
-    </div>
-  </div>
-
-  <!-- Enhanced Profile Modal -->
-  <div id="profileModal" class="fixed inset-0 bg-black/90 modal-overlay flex items-start justify-center z-50 hidden overflow-y-auto p-2 sm:p-4 md:p-6">
-    <div class="bg-slate-900/95 backdrop-blur-xl rounded-3xl p-4 sm:p-6 md:p-10 max-w-5xl w-full my-4 border border-slate-700/50 shadow-2xl modal-content">
-      
-      <!-- Profile Header -->
-      <div class="mb-8 sm:mb-12 border-b border-slate-700/50 pb-6 sm:pb-10">
-        <div class="flex justify-between items-center mb-6 sm:mb-8">
-          <h3 class="text-2xl sm:text-3xl font-bold gradient-text">My Profile</h3>
-          <button id="closeProfile" class="text-3xl sm:text-4xl text-slate-400 hover:text-white transition">×</button>
-        </div>
-        <div class="flex flex-col md:flex-row items-center gap-4 sm:gap-8">
-          <div class="relative group">
-            <img id="editProfilePreview" src="" class="profile-img">
-            <div class="absolute inset-0 bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-              <i class="fas fa-camera text-xl sm:text-2xl"></i>
+      <div class="mb-6">
+        <h4 class="text-lg font-bold mb-3 text-indigo-200">1. Select Date</h4>
+        <div class="grid grid-cols-2 gap-3">
+          <label class="cursor-pointer">
+            <input type="radio" name="order-date" value="today" class="peer sr-only" checked>
+            <div class="choice-design p-3 text-center bg-slate-700/30 border-2 border-slate-600 rounded-xl transition-all peer-checked:border-indigo-500">
+              <span class="font-bold">Today</span>
             </div>
-          </div>
-          <div class="flex-1 w-full space-y-3 sm:space-y-4 text-center md:text-left">
-            <div>
-              <p class="text-xs sm:text-sm text-slate-400 mb-1">Current Name</p>
-              <p id="currentProfileName" class="text-lg sm:text-xl font-bold"></p>
+          </label>
+          <label class="cursor-pointer">
+            <input type="radio" name="order-date" value="tomorrow" class="peer sr-only">
+            <div class="choice-design p-3 text-center bg-slate-700/30 border-2 border-slate-600 rounded-xl transition-all peer-checked:border-indigo-500">
+              <span class="font-bold">Tomorrow</span>
             </div>
-            <button id="triggerEdit" class="bg-indigo-600 hover:bg-indigo-700 px-4 sm:px-6 py-2 rounded-lg text-xs sm:text-sm font-semibold transition shadow-lg transform hover:scale-105">
-              <i class="fas fa-camera mr-2"></i> Update Photo
-            </button>
-          </div>
+          </label>
         </div>
       </div>
 
-      <!-- Analytics Header -->
-      <div class="mb-6 sm:mb-10">
-        <h3 class="text-2xl sm:text-3xl md:text-4xl font-bold gradient-text">My Mess Analytics</h3>
-      </div>
-
-      <!-- Stats Cards -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-6 sm:mb-10">
-        <div class="bg-slate-800/50 border border-slate-700/50 p-3 sm:p-4 md:p-6 rounded-2xl text-center">
-          <h4 class="text-slate-400 text-xs sm:text-sm uppercase mb-1 sm:mb-2">Pending Items</h4>
-          <p id="unpaidCount" class="text-2xl sm:text-3xl font-bold text-red-400">0</p>
-        </div>
-        <div class="bg-slate-800/50 border border-slate-700/50 p-3 sm:p-4 md:p-6 rounded-2xl text-center">
-          <h4 class="text-slate-400 text-xs sm:text-sm uppercase mb-1 sm:mb-2">My Score</h4>
-          <p id="score" class="text-2xl sm:text-3xl font-bold text-blue-400">0</p>
-        </div>
-        <div class="bg-slate-800/50 border border-slate-700/50 p-3 sm:p-4 md:p-6 rounded-2xl text-center">
-          <h4 class="text-slate-400 text-xs sm:text-sm uppercase mb-1 sm:mb-2">Total Spent</h4>
-          <p id="totalSpent" class="text-2xl sm:text-3xl font-bold text-emerald-400">₹0</p>
-        </div>
-        <div class="bg-slate-800/50 border border-slate-700/50 p-3 sm:p-4 md:p-6 rounded-2xl text-center">
-          <h4 class="text-slate-400 text-xs sm:text-sm uppercase mb-1 sm:mb-2">Period</h4>
-          <select id="periodSelect" class="bg-slate-700 text-white px-2 sm:px-3 py-1 rounded-lg border border-slate-600 w-full focus:outline-none text-xs sm:text-sm">
-            <option value="day">Today</option>
-            <option value="week">This Week</option>
-            <option value="month">This Month</option>
-            <option value="year">This Year</option>
-          </select>
+      <div class="mb-8">
+        <h4 class="text-lg font-bold mb-3 text-indigo-200">2. Select Batch</h4>
+        <div class="space-y-3">
+          <label class="cursor-pointer block">
+            <input type="radio" name="batch-time" value="1" class="peer sr-only" checked>
+            <div class="choice-design p-4 bg-slate-700/30 border-2 border-slate-600 rounded-xl flex items-center justify-between">
+              <div><div class="font-bold">Batch 1</div><div class="text-xs text-slate-400">12:30 PM - 1:30 PM</div></div>
+              <i class="fas fa-check-circle text-indigo-500 opacity-0 peer-checked:opacity-100"></i>
+            </div>
+          </label>
+          <label class="cursor-pointer block">
+            <input type="radio" name="batch-time" value="2" class="peer sr-only">
+            <div class="choice-design p-4 bg-slate-700/30 border-2 border-slate-600 rounded-xl flex items-center justify-between">
+              <div><div class="font-bold">Batch 2</div><div class="text-xs text-slate-400">1:30 PM - 2:30 PM</div></div>
+              <i class="fas fa-check-circle text-indigo-500 opacity-0 peer-checked:opacity-100"></i>
+            </div>
+          </label>
         </div>
       </div>
 
-      <!-- Spending Chart -->
-      <div class="mb-6 sm:mb-10">
-        <h4 class="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-6 flex items-center gap-2 sm:gap-3">
-          <i class="fas fa-chart-line text-indigo-400"></i> <span class="text-sm sm:text-xl md:text-2xl">Spending Over Time</span>
-        </h4>
-        <div class="bg-slate-800/30 p-3 sm:p-4 md:p-6 rounded-3xl border border-slate-700/30" style="height: 250px; sm:height: 300px; md:height: 350px;">
-          <canvas id="spendingChart"></canvas>
-        </div>
-      </div>
-
-      <!-- Food Preferences Chart -->
-      <div class="mb-6 sm:mb-10">
-        <h4 class="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-6 flex items-center gap-2 sm:gap-3">
-          <i class="fas fa-utensils text-yellow-400"></i> <span class="text-sm sm:text-xl md:text-2xl">Food Preferences</span>
-        </h4>
-        <div class="bg-slate-800/30 p-3 sm:p-4 md:p-6 rounded-3xl border border-slate-700/30" style="height: 250px; sm:height: 300px; md:height: 350px;">
-          <canvas id="foodChart"></canvas>
-        </div>
-      </div>
-
-      <!-- Order History -->
-      <div>
-        <h4 class="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-6 flex items-center gap-2 sm:gap-3">
-          <i class="fas fa-history text-indigo-400"></i> <span class="text-sm sm:text-xl md:text-2xl">Order History</span>
-        </h4>
-        <div id="profileOrders" class="space-y-3 sm:space-y-4 max-h-72 sm:max-h-96 overflow-y-auto"></div>
+      <div class="flex gap-4">
+        <button id="addSelectedToCart" class="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 py-3 rounded-xl font-semibold">Add to Cart</button>
+        <button id="cancelAddToCart" class="flex-1 bg-slate-600 py-3 rounded-xl font-semibold">Cancel</button>
       </div>
     </div>
   </div>
 
-  <div id="mainContent" class="max-w-7xl mx-auto px-3 sm:px-4 md:px-8 py-4 sm:py-6">
-    <!-- Header -->
-    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 sm:mb-12">
-      <div>
-        <h1 class="text-3xl sm:text-4xl md:text-5xl font-bold gradient-text">MessMate</h1>
-        <p id="welcome" class="text-sm sm:text-base md:text-lg text-indigo-200 mt-2 font-medium"></p>
-      </div>
-      <div class="flex items-center gap-2 sm:gap-3 md:gap-4 flex-wrap">
-        <!-- Cart Icon -->
-        <button id="cartBtn" class="relative text-lg sm:text-xl md:text-2xl p-2 sm:p-3 bg-emerald-600/70 hover:bg-emerald-600 rounded-full transition-all shadow-lg" title="Shopping Cart">
+  <div id="mainContent" class="max-w-7xl mx-auto px-4 py-6">
+    <div class="flex justify-between items-center mb-12">
+      <h1 class="text-4xl font-bold gradient-text">MessMate</h1>
+      <div class="flex items-center gap-3">
+        <button id="cartBtn" class="relative p-3 bg-emerald-600/70 rounded-full">
           <i class="fas fa-shopping-cart"></i>
           <span id="cartBadge" class="cart-badge hidden">0</span>
         </button>
-        
-        <!-- My Tokens Icon -->
-        <button id="myTokensBtn" class="text-lg sm:text-xl md:text-2xl p-2 sm:p-3 bg-purple-600/70 hover:bg-purple-600 rounded-full transition-all shadow-lg" title="My Tokens">
-          <i class="fas fa-list-alt"></i>
-        </button>
-        
-        <!-- Token Pass Icon -->
-        <button id="tokenBtn" class="text-lg sm:text-xl md:text-2xl p-2 sm:p-3 bg-indigo-600/70 hover:bg-indigo-600 rounded-full transition-all shadow-lg" title="Today's Token">
-          <i class="fas fa-ticket-alt"></i>
-        </button>
-        
-        <!-- Profile Icon with Avatar -->
-        <button id="profileBtn" class="p-0 border-none bg-transparent shadow-lg transition transform hover:scale-110" title="Profile">
-          <div id="initialsAvatar" class="initials-avatar"></div>
-        </button>
-        
-        <!-- Logout -->
-        <button id="logout" class="bg-gradient-to-r from-red-500 to-red-600 px-4 sm:px-6 md:px-8 py-2 sm:py-3 rounded-xl font-semibold transition-all shadow-lg text-xs sm:text-sm md:text-base">
-          <i class="fas fa-sign-out-alt mr-1 sm:mr-2"></i> <span class="hidden xs:inline">Logout</span>
-        </button>
+        <button id="logout" class="bg-red-500 px-6 py-2 rounded-xl font-semibold">Logout</button>
       </div>
     </div>
-
-    <!-- Meals Section -->
-    <section class="mb-12 sm:mb-16">
-      <h2 class="text-2xl sm:text-3xl font-bold mb-6 sm:mb-8 text-indigo-200">
-        <i class="fas fa-utensils"></i> Available Meals
-      </h2>
-      <div id="meals" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 md:gap-8"></div>
-    </section>
-
-    <!-- Orders Section -->
-    <section>
-      <h2 class="text-2xl sm:text-3xl font-bold mb-6 sm:mb-8 text-indigo-200">
-        <i class="fas fa-shopping-bag"></i> Your Orders
-      </h2>
-      <div id="orders" class="bg-slate-800/30 p-4 sm:p-6 md:p-8 rounded-2xl"></div>
+    <section class="mb-16">
+      <h2 class="text-3xl font-bold mb-8 text-indigo-200"><i class="fas fa-utensils"></i> Available Meals</h2>
+      <div id="meals" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"></div>
     </section>
   </div>
 
