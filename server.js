@@ -163,6 +163,25 @@ const librarySchema = new mongoose.Schema({
 });
 const Library = mongoose.model("Library", librarySchema);
 
+// Paste it here!
+app.post("/api/library/save", async (req, res) => {
+    try {
+        const { name, price, description, image } = req.body;
+
+        const newTemplate = new Library({ 
+            name, 
+            price: Number(price), 
+            description, 
+            image 
+        });
+
+        await newTemplate.save();
+        res.json({ success: true, message: "Saved to Library collection!" });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // Token Schema
 const tokenSchema = new mongoose.Schema({
   token: { type: String, required: true },
@@ -518,16 +537,6 @@ app.get("/library", async (req, res) => {
     }
 });
 
-app.post("/api/library/save", async (req, res) => {
-    try {
-        const { name, price, description, image } = req.body;
-        const newTemplate = new Library({ name, price: Number(price), description, image });
-        await newTemplate.save();
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
-    }
-});
 
 // DELETE an item from the library
 app.delete("/api/library/delete/:id", async (req, res) => {
@@ -1435,4 +1444,3 @@ app.listen(PORT, () => {
   console.log("⏰ Token expiry: 11:59 PM same day");
   console.log("🎫 Sequential token numbering enabled");
 });
-
