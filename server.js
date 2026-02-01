@@ -15,8 +15,8 @@ const { OAuth2Client } = require('google-auth-library');
 const webpush = require('web-push');
 
 const app = express();
-app.use(bodyParser.json({ limit: '10mb' })); 
-app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
+app.use(bodyParser.json({ limit: '50mb' })); 
+app.use(bodyParser.urlencoded({ limit: '50mb', extended: true, parameterLimit: 50000 }));
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' ? process.env.FRONTEND_URL || 'https://slr1-0.onrender.com' : '*',
   credentials: true
