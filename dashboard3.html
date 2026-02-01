@@ -13,7 +13,6 @@
     .image-preview { width: 100%; height: 200px; object-fit: cover; border-radius: 12px; }
     .custom-scrollbar::-webkit-scrollbar { width: 6px; }
     .custom-scrollbar::-webkit-scrollbar-thumb { background: #6366f1; border-radius: 10px; }
-    .library-item:hover { transform: translateX(5px); border-color: #6366f1; }
   </style>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 text-white overflow-x-hidden">
@@ -24,45 +23,26 @@
         <p class="text-lg text-indigo-200 mt-2 font-medium">Producer Menu Management</p>
       </div>
       <div class="flex items-center gap-4">
-        <button onclick="window.location.href='/dashboard1'" class="bg-slate-800/50 hover:bg-slate-700/50 px-6 py-3 rounded-xl font-semibold transition-all">
-          <i class="fas fa-arrow-left mr-2"></i>Dashboard
-        </button>
-        <button id="logout" class="bg-red-500 hover:bg-red-600 px-6 py-3 rounded-xl font-semibold transition-all">
-          <i class="fas fa-sign-out-alt mr-2"></i> Logout
-        </button>
+        <button onclick="window.location.href='/dashboard1'" class="bg-slate-800/50 hover:bg-slate-700/50 px-6 py-3 rounded-xl font-semibold transition-all">Back to Dashboard</button>
+        <button id="logout" class="bg-red-500 hover:bg-red-600 px-8 py-3 rounded-xl font-semibold transition-all">Logout</button>
       </div>
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-16">
       <section class="lg:col-span-1">
         <div class="bg-slate-800/30 backdrop-blur-sm p-6 rounded-2xl border border-slate-700/30 shadow-2xl h-full flex flex-col">
-          <h2 class="text-2xl font-bold mb-6 text-indigo-200 flex items-center gap-3">
-            <i class="fas fa-book-open"></i> Meal Library
-          </h2>
-          <div id="mealLibrary" class="space-y-4 overflow-y-auto flex-1 pr-2 custom-scrollbar" style="max-height: 500px;">
-            <p class="text-slate-500 text-sm italic">Loading library...</p>
-          </div>
+          <h2 class="text-2xl font-bold mb-6 text-indigo-200 flex items-center gap-3"><i class="fas fa-book-open"></i> Meal Library</h2>
+          <div id="mealLibrary" class="space-y-4 overflow-y-auto flex-1 pr-2 custom-scrollbar" style="max-height: 500px;"></div>
         </div>
       </section>
 
       <section class="lg:col-span-2">
         <div class="bg-slate-800/30 backdrop-blur-sm p-8 rounded-2xl border border-slate-700/30 shadow-2xl">
-          <h2 id="formTitle" class="text-3xl font-bold mb-8 text-indigo-200 flex items-center gap-3">
-            <i class="fas fa-plus-circle"></i> Add New Meal
-          </h2>
+          <h2 id="formTitle" class="text-3xl font-bold mb-8 text-indigo-200 flex items-center gap-3"><i class="fas fa-plus-circle"></i> Add New Meal</h2>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label class="block text-sm font-semibold text-slate-300 mb-2">Meal Name *</label>
-              <input type="text" id="name" class="w-full bg-slate-700/50 border border-slate-600 rounded-xl px-4 py-3 text-white">
-            </div>
-            <div>
-              <label class="block text-sm font-semibold text-slate-300 mb-2">Price *</label>
-              <input type="number" id="price" class="w-full bg-slate-700/50 border border-slate-600 rounded-xl px-4 py-3 text-white">
-            </div>
-            <div class="md:col-span-2">
-              <label class="block text-sm font-semibold text-slate-300 mb-2">Description</label>
-              <textarea id="description" rows="3" class="w-full bg-slate-700/50 border border-slate-600 rounded-xl px-4 py-3 text-white"></textarea>
-            </div>
+            <div><label class="block text-sm font-semibold text-slate-300 mb-2">Meal Name *</label><input type="text" id="name" class="w-full bg-slate-700/50 border border-slate-600 rounded-xl px-4 py-3 text-white"></div>
+            <div><label class="block text-sm font-semibold text-slate-300 mb-2">Price *</label><input type="number" id="price" class="w-full bg-slate-700/50 border border-slate-600 rounded-xl px-4 py-3 text-white"></div>
+            <div class="md:col-span-2"><label class="block text-sm font-semibold text-slate-300 mb-2">Description</label><textarea id="description" rows="3" class="w-full bg-slate-700/50 border border-slate-600 rounded-xl px-4 py-3 text-white"></textarea></div>
             <div class="md:col-span-2">
               <label class="block text-sm font-semibold text-slate-300 mb-2">Meal Image</label>
               <input type="file" id="image" accept="image/*" class="w-full bg-slate-700/50 border border-slate-600 rounded-xl px-4 py-3 text-white">
@@ -70,8 +50,8 @@
             </div>
           </div>
           <div class="flex gap-4 mt-8">
-            <button onclick="saveMeal()" id="saveBtn" class="bg-emerald-500 px-8 py-3 rounded-xl font-semibold transition-all">Add Meal</button>
-            <button onclick="saveToLibrary()" class="bg-indigo-600 px-8 py-3 rounded-xl font-semibold transition-all">Save to Library</button>
+            <button onclick="saveMeal()" id="saveBtn" class="bg-emerald-500 px-8 py-3 rounded-xl font-semibold transition-all hover:scale-105">Add Meal</button>
+            <button onclick="saveToLibrary()" class="bg-indigo-600 px-8 py-3 rounded-xl font-semibold transition-all hover:scale-105">Save to Library</button>
             <button onclick="cancelEdit()" id="cancelBtn" style="display:none;" class="bg-slate-600 px-8 py-3 rounded-xl font-semibold transition-all">Cancel</button>
           </div>
         </div>
@@ -79,9 +59,7 @@
     </div>
 
     <section class="mb-16">
-      <h2 class="text-3xl font-bold mb-8 text-indigo-200 flex items-center gap-3">
-        <i class="fas fa-list"></i> Existing Meals
-      </h2>
+      <h2 class="text-3xl font-bold mb-8 text-indigo-200 flex items-center gap-3"><i class="fas fa-list"></i> Existing Meals</h2>
       <div id="meals" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"></div>
     </section>
   </div>
