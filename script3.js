@@ -1,311 +1,137 @@
-// script3.js - Producer Menu Management (Dashboard3)
-// Place this file in the same directory as dashboard3.html
-
-const userEmail = localStorage.getItem('messmate_user_email');
-const userRole = localStorage.getItem('messmate_user_role') || 'producer';
-const userName = localStorage.getItem('messmate_user_name') || '';
-
-// Redirect if not logged in or not a producer
-if (!userEmail || userRole !== 'producer') {
-  window.location.href = '/';
-}
-
 let editingMealId = null;
+let libraryImageUrl = null; // Stores URL if picked from library
 
-// Image preview functionality
-document.getElementById('image').addEventListener('change', function(e) {
-  const file = e.target.files[0];
-  if (file) {
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      alert('Image size should be less than 5MB');
-      e.target.value = '';
-      document.getElementById('imagePreview').classList.add('hidden');
-      return;
-    }
-
-    // Validate file type
-    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-    if (!validTypes.includes(file.type)) {
-      alert('Please upload a valid image (JPEG, PNG, or WebP)');
-      e.target.value = '';
-      document.getElementById('imagePreview').classList.add('hidden');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = function(e) {
-      document.getElementById('previewImg').src = e.target.result;
-      document.getElementById('imagePreview').classList.remove('hidden');
-    }
-    reader.readAsDataURL(file);
-  } else {
-    document.getElementById('imagePreview').classList.add('hidden');
-  }
+document.addEventListener('DOMContentLoaded', () => {
+    loadLibrary();
+    loadMeals();
 });
 
-// Save meal function
-async function saveMeal() {
-  const nameVal = document.getElementById('name').value.trim();
-  const priceVal = document.getElementById('price').value.trim();
-
-  if (!nameVal || !priceVal) {
-    showToast('Please fill in meal name and price', 'error');
-    return;
-  }
-
-  // Validate price
-  if (isNaN(priceVal) || Number(priceVal) <= 0) {
-    showToast('Please enter a valid price', 'error');
-    return;
-  }
-
-  const formData = new FormData();
-  formData.append("name", nameVal);
-  formData.append("price", priceVal);
-  formData.append("description", document.getElementById('description').value);
-
-  const imageFile = document.getElementById('image').files[0];
-  if (imageFile) {
-    formData.append("image", imageFile);
-  }
-
-  let url = "/add-meal";
-  let method = "POST";
-
-  if (editingMealId) {
-    url = "/update-meal/" + editingMealId;
-    method = "PUT";
-  }
-
-  // Show loading state
-  const saveBtn = document.getElementById('saveBtn');
-  const originalBtnText = saveBtn.innerHTML;
-  saveBtn.disabled = true;
-  saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
-
-  try {
-    const response = await fetch(url, { method, body: formData });
-    const data = await response.json();
-
-    if (data.success) {
-      showToast(editingMealId ? "Meal Updated Successfully!" : "Meal Added Successfully!", 'success');
-      resetForm();
-      loadMeals();
-    } else {
-      showToast(data.error || 'Error saving meal', 'error');
+// Image Preview
+document.getElementById('image').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            document.getElementById('previewImg').src = e.target.result;
+            document.getElementById('imagePreview').classList.remove('hidden');
+            libraryImageUrl = null;
+        };
+        reader.readAsDataURL(file);
     }
-  } catch (error) {
-    showToast('Error saving meal. Please try again.', 'error');
-    console.error('Save meal error:', error);
-  } finally {
-    saveBtn.disabled = false;
-    saveBtn.innerHTML = originalBtnText;
-  }
+});
+
+async function loadLibrary() {
+    const res = await fetch("/library");
+    const data = await res.json();
+    const container = document.getElementById('mealLibrary');
+    container.innerHTML = data.map(item => `
+        <div onclick='useLibraryItem(${JSON.stringify(item)})' class="library-item cursor-pointer bg-slate-700/30 p-3 rounded-xl border border-slate-600 flex items-center gap-4 transition-all">
+            <img src="${item.image}" class="w-12 h-12 rounded-lg object-cover">
+            <div class="flex-1"><p class="font-bold text-sm">${item.name}</p><p class="text-xs text-emerald-400">₹${item.price}</p></div>
+            <i class="fas fa-plus-circle text-indigo-400"></i>
+        </div>`).join('');
 }
 
-// Edit meal function
-function editMeal(meal) {
-  editingMealId = meal._id;
-
-  document.getElementById('name').value = meal.name;
-  document.getElementById('price').value = meal.price;
-  document.getElementById('description').value = meal.description || '';
-
-  if (meal.image) {
-    document.getElementById('previewImg').src = meal.image;
+function useLibraryItem(item) {
+    document.getElementById('name').value = item.name;
+    document.getElementById('price').value = item.price;
+    document.getElementById('description').value = item.description || '';
+    document.getElementById('previewImg').src = item.image;
     document.getElementById('imagePreview').classList.remove('hidden');
-  }
-
-  document.getElementById("formTitle").innerHTML = '<i class="fas fa-edit"></i> Edit Meal';
-  document.getElementById("saveBtn").innerHTML = '<i class="fas fa-save"></i> Update Meal';
-  document.getElementById("cancelBtn").style.display = "inline-flex";
-
-  // Scroll to form smoothly
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+    libraryImageUrl = item.image; // Keep the Cloudinary URL
 }
 
-// Cancel edit function
-function cancelEdit() {
-  if (confirm('Are you sure you want to cancel? Any unsaved changes will be lost.')) {
-    resetForm();
-  }
+async function saveMeal() {
+    const name = document.getElementById('name').value;
+    const price = document.getElementById('price').value;
+    const file = document.getElementById('image').files[0];
+
+    if (!name || !price) return alert("Name and Price required");
+
+    const formData = new FormData();
+    formData.append("name", name);
+    formData.append("price", price);
+    formData.append("description", document.getElementById('description').value);
+    
+    // If we picked from library, we send the URL. If we picked a file, multer handles it.
+    if (file) {
+        formData.append("image", file);
+    } else if (libraryImageUrl) {
+        // We tell the server to use this URL instead of a new file
+        formData.append("existingImageUrl", libraryImageUrl); 
+    }
+
+    const url = editingMealId ? `/update-meal/${editingMealId}` : "/add-meal";
+    const method = editingMealId ? "PUT" : "POST";
+
+    const res = await fetch(url, { method, body: formData });
+    const data = await res.json();
+    if (data.success) {
+        alert("Meal Saved!");
+        resetForm();
+        loadMeals();
+    }
 }
 
-// Reset form function
-function resetForm() {
-  editingMealId = null;
-  document.getElementById('name').value = "";
-  document.getElementById('price').value = "";
-  document.getElementById('description').value = "";
-  document.getElementById('image').value = "";
-  document.getElementById('imagePreview').classList.add('hidden');
-
-  document.getElementById("formTitle").innerHTML = '<i class="fas fa-plus-circle"></i> Add New Meal';
-  document.getElementById("saveBtn").innerHTML = '<i class="fas fa-check"></i> Add Meal';
-  document.getElementById("cancelBtn").style.display = "none";
-}
-
-// Load meals function
 async function loadMeals() {
-  try {
     const res = await fetch("/meals");
     const data = await res.json();
-
-    const mealsContainer = document.getElementById('meals');
-    
-    if (data.length === 0) {
-      mealsContainer.innerHTML = `
-        <div class="col-span-full text-center py-16 text-slate-400">
-          <i class="fas fa-utensils text-6xl mb-4 opacity-50"></i>
-          <p class="text-xl">No meals added yet. Add your first meal above!</p>
-        </div>
-      `;
-      return;
-    }
-
-    mealsContainer.innerHTML = data.map(m => `
-      <div class="meal-card bg-slate-800/40 backdrop-blur-sm rounded-2xl overflow-hidden border border-slate-700/30 shadow-xl">
-        ${m.image ? `
-          <div class="h-48 overflow-hidden bg-gradient-to-br from-indigo-900 to-purple-900">
-            <img src="${m.image}" class="w-full h-full object-cover" alt="${m.name}" loading="lazy" onerror="this.src='https://via.placeholder.com/400x300/667eea/ffffff?text=Error+Loading'">
-          </div>
-        ` : `
-          <div class="h-48 bg-gradient-to-br from-indigo-900 to-purple-900 flex items-center justify-center">
-            <i class="fas fa-utensils text-6xl text-indigo-300 opacity-50"></i>
-          </div>
-        `}
-        
-        <div class="p-6">
-          <h3 class="text-2xl font-bold text-white mb-2">${escapeHtml(m.name)}</h3>
-          <p class="text-3xl font-bold text-emerald-400 mb-3">₹${m.price}</p>
-          ${m.description ? `
-            <p class="text-slate-300 text-sm mb-4 line-clamp-2">${escapeHtml(m.description)}</p>
-          ` : ''}
-          
-          <div class="flex items-center gap-2 mb-4">
-            <div class="flex gap-1">
-              ${[1,2,3,4,5].map(i => `<span class="text-lg ${i <= Math.round(m.avgRating) ? 'text-yellow-400' : 'text-gray-600'}">★</span>`).join('')}
+    const container = document.getElementById('meals');
+    container.innerHTML = data.map(m => `
+        <div class="meal-card bg-slate-800/40 rounded-2xl overflow-hidden border border-slate-700/30">
+            <img src="${m.image}" class="h-48 w-full object-cover">
+            <div class="p-6">
+                <h3 class="text-xl font-bold">${m.name}</h3>
+                <p class="text-2xl font-bold text-emerald-400">₹${m.price}</p>
+                <div class="flex gap-2 mt-4">
+                    <button onclick='editMeal(${JSON.stringify(m).replace(/'/g, "&apos;")})' class="flex-1 bg-indigo-600 py-2 rounded-lg">Edit</button>
+                    <button onclick="deleteMeal('${m._id}')" class="flex-1 bg-red-600/20 text-red-400 py-2 rounded-lg">Delete</button>
+                </div>
             </div>
-            <span class="text-xs text-slate-400">${m.avgRating.toFixed(1)} (${m.totalRatings} ratings)</span>
-          </div>
-          
-          <div class="flex gap-3 mt-4">
-            <button 
-              onclick='editMeal(${JSON.stringify(m).replace(/'/g, "&#39;")})'
-              class="flex-1 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 px-4 py-3 rounded-xl font-semibold transition-all duration-300 hover:scale-105 shadow-lg flex items-center justify-center gap-2"
-            >
-              <i class="fas fa-edit"></i> Edit
-            </button>
-            <button 
-              onclick="deleteMeal('${m._id}', '${escapeHtml(m.name)}')"
-              class="flex-1 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 px-4 py-3 rounded-xl font-semibold transition-all duration-300 hover:scale-105 shadow-lg flex items-center justify-center gap-2"
-            >
-              <i class="fas fa-trash"></i> Delete
-            </button>
-          </div>
-        </div>
-      </div>
-    `).join('');
-  } catch (error) {
-    console.error('Error loading meals:', error);
-    document.getElementById('meals').innerHTML = `
-      <div class="col-span-full text-center py-16 text-red-400">
-        <i class="fas fa-exclamation-triangle text-6xl mb-4"></i>
-        <p class="text-xl">Error loading meals. Please refresh the page.</p>
-      </div>
-    `;
-  }
+        </div>`).join('');
 }
 
-// Delete meal function
-async function deleteMeal(id, name) {
-  if (!confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) {
-    return;
-  }
+async function saveToLibrary() {
+    const name = document.getElementById('name').value;
+    const price = document.getElementById('price').value;
+    const desc = document.getElementById('description').value;
+    const img = document.getElementById('previewImg').src; // This is either Base64 or Cloudinary URL
 
-  try {
-    const response = await fetch("/delete-meal/" + id, { method: "DELETE" });
-    const data = await response.json();
+    if (!name || !price || !img) return alert("Fill Name, Price and choose an image first!");
 
-    if (data.success) {
-      showToast('Meal deleted successfully!', 'success');
-      loadMeals();
-      
-      // If we're editing this meal, reset the form
-      if (editingMealId === id) {
-        resetForm();
-      }
-    } else {
-      showToast(data.error || 'Error deleting meal', 'error');
+    await fetch("/api/library/save", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ name, price, description: desc, image: img })
+    });
+    loadLibrary();
+    alert("Template saved!");
+}
+
+function resetForm() {
+    editingMealId = null; libraryImageUrl = null;
+    document.getElementById('name').value = ""; document.getElementById('price').value = "";
+    document.getElementById('description').value = ""; document.getElementById('image').value = "";
+    document.getElementById('imagePreview').classList.add('hidden');
+    document.getElementById('cancelBtn').style.display = 'none';
+    document.getElementById('formTitle').innerText = "Add New Meal";
+}
+
+function editMeal(m) {
+    editingMealId = m._id;
+    document.getElementById('name').value = m.name;
+    document.getElementById('price').value = m.price;
+    document.getElementById('description').value = m.description || '';
+    document.getElementById('previewImg').src = m.image;
+    document.getElementById('imagePreview').classList.remove('hidden');
+    document.getElementById('formTitle').innerText = "Edit Meal";
+    document.getElementById('cancelBtn').style.display = 'inline-block';
+}
+
+async function deleteMeal(id) {
+    if (confirm("Delete this meal?")) {
+        await fetch(`/delete-meal/${id}`, { method: "DELETE" });
+        loadMeals();
     }
-  } catch (error) {
-    showToast('Error deleting meal. Please try again.', 'error');
-    console.error('Delete meal error:', error);
-  }
 }
-
-// Toast notification function
-function showToast(message, type = 'info') {
-  const toast = document.createElement('div');
-  const bgColor = type === 'success' ? 'bg-emerald-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
-  const icon = type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-triangle' : 'fa-info-circle';
-  
-  toast.className = `fixed top-4 right-4 ${bgColor} text-white px-6 py-4 rounded-xl shadow-lg z-50 flex items-center gap-3 animate-slide-in`;
-  toast.innerHTML = `
-    <i class="fas ${icon}"></i>
-    <span>${escapeHtml(message)}</span>
-  `;
-  
-  document.body.appendChild(toast);
-  
-  setTimeout(() => {
-    toast.classList.add('opacity-0', 'transform', 'translate-x-full');
-    setTimeout(() => toast.remove(), 300);
-  }, 3000);
-}
-
-// Escape HTML to prevent XSS
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-
-// Logout functionality
-document.getElementById('logout').addEventListener('click', () => {
-  if (confirm('Are you sure you want to logout?')) {
-    localStorage.removeItem('messmate_user_email');
-    localStorage.removeItem('messmate_user_role');
-    localStorage.removeItem('messmate_user_name');
-    window.location.href = '/';
-  }
-});
-
-// Add CSS for animation
-const style = document.createElement('style');
-style.textContent = `
-  @keyframes slide-in {
-    from {
-      transform: translateX(100%);
-      opacity: 0;
-    }
-    to {
-      transform: translateX(0);
-      opacity: 1;
-    }
-  }
-  .animate-slide-in {
-    animation: slide-in 0.3s ease-out;
-  }
-`;
-document.head.appendChild(style);
-
-// Load meals on page load
-loadMeals();
-
-// Make functions globally accessible
-window.saveMeal = saveMeal;
-window.editMeal = editMeal;
-window.cancelEdit = cancelEdit;
-window.deleteMeal = deleteMeal;
+function cancelEdit() { resetForm(); }
