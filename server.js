@@ -552,7 +552,6 @@ app.post("/add-meal", uploadMeal.single('image'), async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
-
 // ==================== AUTH ENDPOINTS ====================
 
 async function initMeals() {
