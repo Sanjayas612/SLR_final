@@ -521,11 +521,21 @@ app.get("/library", async (req, res) => {
 app.post("/api/library/save", async (req, res) => {
     try {
         const { name, price, description, image } = req.body;
-        const newTemplate = new Library({ name, price, description, image });
+        const newTemplate = new Library({ name, price: Number(price), description, image });
         await newTemplate.save();
         res.json({ success: true });
     } catch (err) {
-        res.status(500).json({ success: false });
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// DELETE an item from the library
+app.delete("/api/library/delete/:id", async (req, res) => {
+    try {
+        await Library.findByIdAndDelete(req.params.id);
+        res.json({ success: true, message: "Template removed from library" });
+    } catch (err) {
+        res.status(500).json({ success: false, error: "Failed to delete template" });
     }
 });
 
@@ -1425,3 +1435,4 @@ app.listen(PORT, () => {
   console.log("⏰ Token expiry: 11:59 PM same day");
   console.log("🎫 Sequential token numbering enabled");
 });
+
