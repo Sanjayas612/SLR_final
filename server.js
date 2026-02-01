@@ -15,7 +15,8 @@ const { OAuth2Client } = require('google-auth-library');
 const webpush = require('web-push');
 
 const app = express();
-app.use(bodyParser.json());
+app.use(bodyParser.json({ limit: '10mb' })); 
+app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' ? process.env.FRONTEND_URL || 'https://slr1-0.onrender.com' : '*',
   credentials: true
@@ -151,6 +152,16 @@ const mealSchema = new mongoose.Schema({
 });
 
 const Meal = mongoose.model("Meal", mealSchema);
+
+// --- NEW LIBRARY SCHEMA ---
+const librarySchema = new mongoose.Schema({
+    name: { type: String, required: true },
+    price: { type: Number, required: true },
+    description: String,
+    image: String, // Stores the template image string or URL
+    createdAt: { type: Date, default: Date.now }
+});
+const Library = mongoose.model("Library", librarySchema);
 
 // Token Schema
 const tokenSchema = new mongoose.Schema({
@@ -497,16 +508,6 @@ app.get('/producer/sse', (req, res) => {
   });
 });
 
-// --- NEW LIBRARY SCHEMA ---
-const librarySchema = new mongoose.Schema({
-    name: { type: String, required: true },
-    price: { type: Number, required: true },
-    description: String,
-    image: String, // Stores the Cloudinary URL
-    createdAt: { type: Date, default: Date.now }
-});
-const Library = mongoose.model("Library", librarySchema);
-
 // --- NEW LIBRARY ROUTES ---
 app.get("/library", async (req, res) => {
     try {
@@ -552,6 +553,32 @@ app.post("/add-meal", uploadMeal.single('image'), async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+// 1. Fetch all items in the library for the producer sidebar
+app.get("/library", async (req, res) => {
+    try {
+        const items = await Library.find().sort({ name: 1 });
+        res.json(items);
+    } catch (err) {
+        res.status(500).json({ success: false, error: "Could not fetch library" });
+    }
+});
+
+// 2. Save a new meal template into the library
+app.post("/api/library/save", async (req, res) => {
+    try {
+        const { name, price, description, image } = req.body;
+        if (!name || !price || !image) {
+            return res.status(400).json({ success: false, error: "Missing required fields" });
+        }
+        const newTemplate = new Library({ name, price: Number(price), description, image });
+        await newTemplate.save();
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // ==================== AUTH ENDPOINTS ====================
 
 async function initMeals() {
@@ -713,6 +740,31 @@ app.post("/complete-profile", uploadProfile.single('profilePhoto'), async (req, 
 
 // ==================== MEAL ENDPOINTS ====================
 
+// 1. Fetch all items in the library for the producer sidebar
+app.get("/library", async (req, res) => {
+    try {
+        const items = await Library.find().sort({ name: 1 });
+        res.json(items);
+    } catch (err) {
+        res.status(500).json({ success: false, error: "Could not fetch library" });
+    }
+});
+
+// 2. Save a new meal template into the library
+app.post("/api/library/save", async (req, res) => {
+    try {
+        const { name, price, description, image } = req.body;
+        if (!name || !price || !image) {
+            return res.status(400).json({ success: false, error: "Missing required fields" });
+        }
+        const newTemplate = new Library({ name, price: Number(price), description, image });
+        await newTemplate.save();
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 app.get("/meals", async (req, res) => {
   try {
     const meals = await Meal.find({});
@@ -724,22 +776,19 @@ app.get("/meals", async (req, res) => {
 
 app.post("/add-meal", uploadMeal.single('image'), async (req, res) => {
   try {
-    const { name, price, description } = req.body;
+    const { name, price, description, libraryImage } = req.body; // Notice libraryImage
 
     if (!name || !price) {
       return res.json({ success: false, error: "Name and price required" });
     }
 
-    const exists = await Meal.findOne({ name });
-    if (exists) {
-      return res.json({ success: false, error: "Meal already exists" });
-    }
-
+    // IMAGE LOGIC: If a file was uploaded, use its path. 
+    // Otherwise, use the libraryImage URL string.
     const meal = new Meal({
       name,
       price: Number(price),
       description,
-      image: req.file ? req.file.path : null,
+      image: req.file ? req.file.path : libraryImage, 
       cloudinaryId: req.file ? req.file.filename : null
     });
 
