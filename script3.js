@@ -20,20 +20,42 @@ document.getElementById('image').addEventListener('change', function(e) {
     }
 });
 
+// Updated to include a delete button in the sidebar
 async function loadLibrary() {
     try {
         const res = await fetch("/library");
         const data = await res.json();
         const container = document.getElementById('mealLibrary');
         container.innerHTML = data.map(item => `
-            <div onclick='useLibraryItem(${JSON.stringify(item)})' class="cursor-pointer bg-slate-700/30 p-3 rounded-xl border border-slate-600 hover:border-indigo-500 transition-all flex items-center gap-4">
-                <img src="${item.image}" class="w-12 h-12 rounded-lg object-cover">
-                <div class="flex-1"><p class="font-bold text-sm">${item.name}</p><p class="text-xs text-emerald-400">₹${item.price}</p></div>
-                <i class="fas fa-plus-circle text-indigo-400"></i>
+            <div class="group relative bg-slate-700/30 p-3 rounded-xl border border-slate-600 hover:border-indigo-500 transition-all flex items-center gap-4">
+                <div onclick='useLibraryItem(${JSON.stringify(item)})' class="flex flex-1 items-center gap-4 cursor-pointer">
+                    <img src="${item.image}" class="w-12 h-12 rounded-lg object-cover">
+                    <div class="flex-1">
+                        <p class="font-bold text-sm">${item.name}</p>
+                        <p class="text-xs text-emerald-400">₹${item.price}</p>
+                    </div>
+                </div>
+                <button onclick="deleteLibraryItem('${item._id}')" class="text-slate-500 hover:text-red-500 p-2 transition-colors">
+                    <i class="fas fa-trash-alt text-xs"></i>
+                </button>
             </div>`).join('');
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error("Library load error:", err); }
 }
 
+// New function to handle library deletion
+async function deleteLibraryItem(id) {
+    if (!confirm("Remove this template from your library?")) return;
+
+    try {
+        const res = await fetch(`/api/library/delete/${id}`, { method: "DELETE" });
+        const data = await res.json();
+        if (data.success) {
+            loadLibrary(); // Refresh the sidebar
+        }
+    } catch (err) {
+        alert("Failed to delete library item.");
+    }
+}
 function useLibraryItem(item) {
     document.getElementById('name').value = item.name;
     document.getElementById('price').value = item.price;
